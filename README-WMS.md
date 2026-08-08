@@ -3,6 +3,7 @@
 本项目基于 RuoYi-Vue 3.9.2（Spring Boot 4 + Vue 3）扩展仓储管理能力。后端默认运行在 `http://localhost:8080`，前端默认运行在 `http://localhost:5173`。
 
 Oracle Cloud 免费 ARM64 实例的容器化部署说明见 [`deploy/README-ORACLE.md`](deploy/README-ORACLE.md)。
+AWS 2GB/8GB 小规格测试实例的轻量部署配置见 [`deploy/aws-small`](deploy/aws-small/README.md)。
 
 ## 环境要求
 

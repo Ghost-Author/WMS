@@ -1,0 +1,29 @@
+[Unit]
+Description=RuoYi WMS backend
+After=network-online.target mysql.service valkey-server.service
+Wants=network-online.target
+Requires=mysql.service valkey-server.service
+
+[Service]
+Type=simple
+User=wms
+Group=wms
+WorkingDirectory=/var/lib/wms
+EnvironmentFile=/etc/wms/wms.env
+ExecStart=/usr/bin/java -Xms128m -Xmx512m -Xss512k -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError -jar /opt/wms/ruoyi-admin.jar
+Restart=on-failure
+RestartSec=5
+SuccessExitStatus=143
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/wms /var/log/wms
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LimitNOFILE=65535
+MemoryHigh=700M
+MemoryMax=800M
+
+[Install]
+WantedBy=multi-user.target

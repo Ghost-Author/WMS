@@ -1,0 +1,29 @@
+[Unit]
+Description=Temporary Cloudflare Quick Tunnel for RuoYi WMS
+After=network-online.target nginx.service
+Wants=network-online.target
+Requires=nginx.service
+
+[Service]
+Type=simple
+User=wms
+Group=wms
+Environment=HOME=/var/lib/wms
+WorkingDirectory=/var/lib/wms
+ExecStart=/usr/bin/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:80
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/wms
+RestrictAddressFamilies=AF_INET AF_INET6
+LockPersonality=true
+RestrictRealtime=true
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target

@@ -12,6 +12,7 @@
 - `wms.env.example`：后端环境变量模板，所有 `CHANGE_ME` 必须替换为随机值。
 - `install.sh`：校验 commit 和构建产物哈希后，以原子版本目录安装或重部署。
 - `verify.sh`：验证服务、监听地址、数据库、登录、WMS 看板和文件上传。
+- `wms-tunnel.service`：可选的 Cloudflare Quick Tunnel，仅用于安全组暂时无法放行时生成临时 HTTPS 测试地址。
 
 AWS 安全组只应开放 TCP 22 和 80，测试时均限制为使用者公网 IP；不要开放 3306、6379 或 8080。当前配置仅提供 HTTP，不应存放真实业务数据。
 
@@ -64,3 +65,20 @@ ssh -t -i /path/to/key.pem ubuntu@SERVER_IP /tmp/wms-deploy/verify.sh
 ```
 
 安装脚本仅允许空数据库首次导入，并在三个 SQL 文件全部成功后记录指纹。若发现非空但没有完成标记的数据库会停止，避免在半导入状态下继续。SQL 指纹变化时必须先编写显式数据库迁移，不能靠重复运行初始化脚本升级。
+
+## 可选临时公网隧道
+
+Cloudflare Quick Tunnel 不需要账号，会生成随机的 `*.trycloudflare.com` 地址。它没有可用性承诺，服务重启后地址可能改变，只适合开发和临时测试。安装官方 `cloudflared` 后启用：
+
+```bash
+sudo install -o root -g root -m 0644 wms-tunnel.service /etc/systemd/system/wms-tunnel.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now wms-tunnel
+sudo journalctl -u wms-tunnel -n 100 --no-pager | grep -o 'https://[^ ]*\.trycloudflare\.com' | tail -1
+```
+
+隧道会把公网 HTTPS 请求转发到 `http://127.0.0.1:80`。停止并取消开机启动：
+
+```bash
+sudo systemctl disable --now wms-tunnel
+```

@@ -1,0 +1,121 @@
+name: wms-oracle
+
+services:
+  mysql:
+    image: mysql:8.4.10
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-wms}
+      MYSQL_USER: ${MYSQL_USERNAME:-wms}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in deploy/.env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in deploy/.env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+      - --innodb-buffer-pool-size=512M
+      - --max-connections=100
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ../sql/ry_20260320.sql:/docker-entrypoint-initdb.d/01-ruoyi.sql:ro
+      - ../sql/quartz.sql:/docker-entrypoint-initdb.d/02-quartz.sql:ro
+      - ../sql/wms.sql:/docker-entrypoint-initdb.d/03-wms.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    mem_limit: 2g
+    networks:
+      - internal
+
+  redis:
+    image: redis:7.4.10-alpine
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in deploy/.env}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --save 60 1 --requirepass \"$${REDIS_PASSWORD}\""]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    mem_limit: 512m
+    networks:
+      - internal
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      MYSQL_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-wms}?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia%2FShanghai"
+      MYSQL_USERNAME: ${MYSQL_USERNAME:-wms}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in deploy/.env}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in deploy/.env}
+      WMS_TOKEN_SECRET: ${WMS_TOKEN_SECRET:?Set WMS_TOKEN_SECRET in deploy/.env}
+      WMS_UPLOAD_PATH: /app/data/uploadPath
+      WMS_LOG_PATH: /app/data/logs
+      SPRINGDOC_ENABLED: "false"
+      DRUID_WEB_STAT_ENABLED: "false"
+      DRUID_CONSOLE_ENABLED: "false"
+      SPRING_DEVTOOLS_RESTART_ENABLED: "false"
+      LOGGING_LEVEL_COM_RUOYI: info
+      SERVER_TOMCAT_ACCEPT_COUNT: 100
+      SERVER_TOMCAT_THREADS_MAX: 100
+      SERVER_TOMCAT_THREADS_MIN_SPARE: 10
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx1024m -Xss512k -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
+    volumes:
+      - upload-data:/app/data
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "</dev/tcp/127.0.0.1/8080"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+      start_period: 40s
+    mem_limit: 1536m
+    networks:
+      - internal
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/frontend.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    mem_limit: 256m
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  redis-data:
+  upload-data:

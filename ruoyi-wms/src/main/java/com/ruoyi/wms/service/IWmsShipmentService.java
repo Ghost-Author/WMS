@@ -1,0 +1,14 @@
+package com.ruoyi.wms.service;
+
+import java.util.List;
+import com.ruoyi.wms.domain.WmsShipment;
+
+public interface IWmsShipmentService
+{
+    WmsShipment selectShipmentById(Long id);
+    List<WmsShipment> selectShipmentList(WmsShipment query);
+    int insertShipment(WmsShipment shipment);
+    int updateShipment(WmsShipment shipment);
+    void deleteShipmentByIds(Long[] ids);
+    void completeShipment(Long id, String operator);
+}

@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env
+deploy/.env
+**/target
+**/node_modules
+ruoyi-ui/dist
+data
+*.log
+.DS_Store
+.idea
+.vscode

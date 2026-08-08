@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.wms.mapper.WmsStockMapper">
+    <resultMap id="StockResult" type="WmsStock">
+        <id property="stockId" column="stock_id"/><result property="warehouseId" column="warehouse_id"/>
+        <result property="warehouseCode" column="warehouse_code"/><result property="warehouseName" column="warehouse_name"/>
+        <result property="locationId" column="location_id"/><result property="locationCode" column="location_code"/>
+        <result property="locationName" column="location_name"/><result property="itemId" column="item_id"/>
+        <result property="itemCode" column="item_code"/><result property="itemName" column="item_name"/>
+        <result property="specification" column="specification"/><result property="unit" column="unit"/>
+        <result property="batchNo" column="batch_no"/><result property="productionDate" column="production_date"/>
+        <result property="expiryDate" column="expiry_date"/><result property="quantity" column="quantity"/>
+        <result property="lockedQuantity" column="locked_quantity"/><result property="availableQty" column="available_qty"/>
+        <result property="minStock" column="min_stock"/><result property="updateTime" column="update_time"/>
+        <result property="lowStock" column="low_stock"/>
+    </resultMap>
+    <resultMap id="MovementResult" type="WmsStockMovement">
+        <id property="movementId" column="movement_id"/><result property="bizType" column="biz_type"/>
+        <result property="bizNo" column="biz_no"/><result property="warehouseId" column="warehouse_id"/>
+        <result property="warehouseCode" column="warehouse_code"/><result property="warehouseName" column="warehouse_name"/>
+        <result property="locationId" column="location_id"/><result property="locationCode" column="location_code"/>
+        <result property="locationName" column="location_name"/><result property="itemId" column="item_id"/>
+        <result property="itemCode" column="item_code"/><result property="itemName" column="item_name"/>
+        <result property="specification" column="specification"/><result property="unit" column="unit"/>
+        <result property="batchNo" column="batch_no"/><result property="changeQty" column="change_qty"/>
+        <result property="balanceQty" column="balance_qty"/><result property="operator" column="operator"/>
+        <result property="operationTime" column="operation_time"/><result property="remark" column="remark"/>
+    </resultMap>
+    <sql id="stockSelect">select s.stock_id,s.warehouse_id,w.warehouse_code,w.warehouse_name,s.location_id,l.location_code,l.location_name,
+        s.item_id,i.item_code,i.item_name,i.specification,i.unit,s.batch_no,s.production_date,s.expiry_date,s.quantity,s.locked_quantity,
+        (s.quantity-s.locked_quantity) available_qty,i.min_stock,
+        case when i.status='0' and i.min_stock&gt;0 and (select coalesce(sum(sa.quantity-sa.locked_quantity),0) from wms_stock sa
+            where sa.item_id=s.item_id <if test="warehouseId != null">and sa.warehouse_id=#{warehouseId}</if>)&lt;=i.min_stock then true else false end low_stock,
+        s.update_time from wms_stock s
+        left join wms_warehouse w on w.warehouse_id=s.warehouse_id left join wms_location l on l.location_id=s.location_id
+        left join wms_item i on i.item_id=s.item_id</sql>
+    <select id="selectStockList" parameterType="WmsStock" resultMap="StockResult"><include refid="stockSelect"/><where>
+        <if test="warehouseId != null">and s.warehouse_id=#{warehouseId}</if><if test="locationId != null">and s.location_id=#{locationId}</if>
+        <if test="itemId != null">and s.item_id=#{itemId}</if><if test="warehouseCode != null and warehouseCode != ''">and w.warehouse_code like concat('%',#{warehouseCode},'%')</if>
+        <if test="locationCode != null and locationCode != ''">and l.location_code like concat('%',#{locationCode},'%')</if>
+        <if test="itemCode != null and itemCode != ''">and i.item_code like concat('%',#{itemCode},'%')</if>
+        <if test="itemName != null and itemName != ''">and i.item_name like concat('%',#{itemName},'%')</if>
+        <if test="batchNo != null and batchNo != ''">and s.batch_no like concat('%',#{batchNo},'%')</if>
+        </where> order by w.warehouse_code,l.location_code,i.item_code,s.batch_no</select>
+    <select id="selectLowStockList" parameterType="WmsStock" resultMap="StockResult">
+        <choose>
+            <when test="warehouseId != null">
+                select null stock_id,w.warehouse_id,w.warehouse_code,w.warehouse_name,null location_id,null location_code,null location_name,
+                i.item_id,i.item_code,i.item_name,i.specification,i.unit,null batch_no,null production_date,null expiry_date,
+                coalesce(sum(s.quantity),0) quantity,coalesce(sum(s.locked_quantity),0) locked_quantity,
+                coalesce(sum(s.quantity-s.locked_quantity),0) available_qty,i.min_stock,true low_stock,max(s.update_time) update_time
+                from wms_item i join wms_warehouse w on w.warehouse_id=#{warehouseId}
+                left join wms_stock s on s.item_id=i.item_id and s.warehouse_id=w.warehouse_id
+                where i.status='0' and i.min_stock&gt;0
+                <if test="itemId != null">and i.item_id=#{itemId}</if>
+                <if test="itemCode != null and itemCode != ''">and i.item_code like concat('%',#{itemCode},'%')</if>
+                <if test="itemName != null and itemName != ''">and i.item_name like concat('%',#{itemName},'%')</if>
+                group by w.warehouse_id,w.warehouse_code,w.warehouse_name,i.item_id,i.item_code,i.item_name,i.specification,i.unit,i.min_stock
+                having coalesce(sum(s.quantity-s.locked_quantity),0)&lt;=i.min_stock
+                order by available_qty/i.min_stock,i.item_code
+            </when>
+            <otherwise>
+                select null stock_id,null warehouse_id,null warehouse_code,null warehouse_name,null location_id,null location_code,null location_name,
+                i.item_id,i.item_code,i.item_name,i.specification,i.unit,null batch_no,null production_date,null expiry_date,
+                coalesce(sum(s.quantity),0) quantity,coalesce(sum(s.locked_quantity),0) locked_quantity,
+                coalesce(sum(s.quantity-s.locked_quantity),0) available_qty,i.min_stock,true low_stock,max(s.update_time) update_time
+                from wms_item i left join wms_stock s on s.item_id=i.item_id
+                where i.status='0' and i.min_stock&gt;0
+                <if test="itemId != null">and i.item_id=#{itemId}</if>
+                <if test="itemCode != null and itemCode != ''">and i.item_code like concat('%',#{itemCode},'%')</if>
+                <if test="itemName != null and itemName != ''">and i.item_name like concat('%',#{itemName},'%')</if>
+                group by i.item_id,i.item_code,i.item_name,i.specification,i.unit,i.min_stock
+                having coalesce(sum(s.quantity-s.locked_quantity),0)&lt;=i.min_stock
+                order by available_qty/i.min_stock,i.item_code
+            </otherwise>
+        </choose>
+    </select>
+    <select id="selectMovementList" parameterType="WmsStockMovement" resultMap="MovementResult">
+        select m.movement_id,m.biz_type,m.biz_no,m.warehouse_id,w.warehouse_code,w.warehouse_name,m.location_id,l.location_code,l.location_name,
+        m.item_id,i.item_code,i.item_name,i.specification,i.unit,m.batch_no,m.change_qty,m.balance_qty,m.operator,m.operation_time,m.remark
+        from wms_stock_movement m left join wms_warehouse w on w.warehouse_id=m.warehouse_id
+        left join wms_location l on l.location_id=m.location_id left join wms_item i on i.item_id=m.item_id
+        <where><if test="bizType != null and bizType != ''">and m.biz_type=#{bizType}</if>
+        <if test="bizNo != null and bizNo != ''">and m.biz_no like concat('%',#{bizNo},'%')</if>
+        <if test="warehouseId != null">and m.warehouse_id=#{warehouseId}</if><if test="locationId != null">and m.location_id=#{locationId}</if>
+        <if test="itemId != null">and m.item_id=#{itemId}</if><if test="itemCode != null and itemCode != ''">and i.item_code like concat('%',#{itemCode},'%')</if>
+        <choose>
+            <when test="exactBatch != null and exactBatch">and m.batch_no = coalesce(#{batchNo}, '')</when>
+            <when test="batchNo != null and batchNo != ''">and m.batch_no like concat('%',#{batchNo},'%')</when>
+        </choose>
+        <if test="params.beginTime != null and params.beginTime != ''">and m.operation_time &gt;= #{params.beginTime}</if>
+        <if test="params.endTime != null and params.endTime != ''">and m.operation_time &lt; date_add(#{params.endTime}, interval 1 day)</if></where>
+        order by m.operation_time desc,m.movement_id desc
+    </select>
+    <select id="selectStockByKey" resultMap="StockResult"><include refid="stockSelect"/> where s.warehouse_id=#{warehouseId}
+        and s.location_id=#{locationId} and s.item_id=#{itemId} and s.batch_no=#{batchNo}</select>
+    <insert id="upsertStock" parameterType="WmsStock">
+        insert into wms_stock (warehouse_id,location_id,item_id,batch_no,production_date,expiry_date,quantity,locked_quantity,update_time)
+        values (#{warehouseId},#{locationId},#{itemId},#{batchNo},#{productionDate},#{expiryDate},#{quantity},0,sysdate())
+        on duplicate key update quantity=wms_stock.quantity+values(quantity),
+        production_date=coalesce(wms_stock.production_date,values(production_date)),expiry_date=coalesce(wms_stock.expiry_date,values(expiry_date)),update_time=sysdate()
+    </insert>
+    <update id="decreaseStock">update wms_stock set quantity=quantity-#{quantity},update_time=sysdate()
+        where warehouse_id=#{warehouseId} and location_id=#{locationId} and item_id=#{itemId} and batch_no=#{batchNo}
+        and quantity-locked_quantity &gt;= #{quantity}</update>
+    <insert id="insertMovement" parameterType="WmsStockMovement" useGeneratedKeys="true" keyProperty="movementId">
+        insert into wms_stock_movement (biz_type,biz_no,warehouse_id,location_id,item_id,batch_no,change_qty,balance_qty,operator,operation_time,remark)
+        values (#{bizType},#{bizNo},#{warehouseId},#{locationId},#{itemId},#{batchNo},#{changeQty},#{balanceQty},#{operator},sysdate(),#{remark})
+    </insert>
+</mapper>

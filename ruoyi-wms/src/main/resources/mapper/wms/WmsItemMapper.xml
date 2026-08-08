@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.wms.mapper.WmsItemMapper">
+    <resultMap id="ItemResult" type="WmsItem">
+        <id property="itemId" column="item_id"/><result property="itemCode" column="item_code"/>
+        <result property="itemName" column="item_name"/><result property="category" column="category"/>
+        <result property="specification" column="specification"/><result property="unit" column="unit"/>
+        <result property="barcode" column="barcode"/><result property="minStock" column="min_stock"/>
+        <result property="maxStock" column="max_stock"/><result property="status" column="status"/>
+        <result property="createBy" column="create_by"/><result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/><result property="updateTime" column="update_time"/><result property="remark" column="remark"/>
+    </resultMap>
+    <sql id="itemColumns">item_id,item_code,item_name,category,specification,unit,barcode,min_stock,max_stock,status,
+        create_by,create_time,update_by,update_time,remark</sql>
+    <select id="selectItemById" resultMap="ItemResult">select <include refid="itemColumns"/> from wms_item where item_id=#{itemId}</select>
+    <select id="selectItemList" parameterType="WmsItem" resultMap="ItemResult">select <include refid="itemColumns"/> from wms_item
+        <where><if test="itemCode != null and itemCode != ''">and item_code like concat('%',#{itemCode},'%')</if>
+        <if test="itemName != null and itemName != ''">and item_name like concat('%',#{itemName},'%')</if>
+        <if test="category != null and category != ''">and category=#{category}</if>
+        <if test="barcode != null and barcode != ''">and barcode=#{barcode}</if>
+        <if test="status != null and status != ''">and status=#{status}</if></where> order by item_code</select>
+    <insert id="insertItem" parameterType="WmsItem" useGeneratedKeys="true" keyProperty="itemId">
+        insert into wms_item (item_code,item_name,category,specification,unit,barcode,min_stock,max_stock,status,create_by,create_time,remark)
+        values (#{itemCode},#{itemName},#{category},#{specification},#{unit},#{barcode},#{minStock},#{maxStock},#{status},#{createBy},sysdate(),#{remark})
+    </insert>
+    <update id="updateItem" parameterType="WmsItem">update wms_item set item_code=#{itemCode},item_name=#{itemName},category=#{category},
+        specification=#{specification},unit=#{unit},barcode=#{barcode},min_stock=#{minStock},max_stock=#{maxStock},status=#{status},
+        update_by=#{updateBy},update_time=sysdate(),remark=#{remark} where item_id=#{itemId}</update>
+    <delete id="deleteItemById">delete from wms_item where item_id=#{itemId}</delete>
+    <select id="countCode" resultType="int">select count(1) from wms_item where item_code=#{itemCode}<if test="itemId != null"> and item_id != #{itemId}</if></select>
+    <select id="countBarcode" resultType="int">select count(1) from wms_item where barcode=#{barcode}<if test="itemId != null"> and item_id != #{itemId}</if></select>
+    <select id="countReferences" resultType="int">select (select count(1) from wms_stock where item_id=#{itemId})
+        + (select count(1) from wms_receipt_line where item_id=#{itemId}) + (select count(1) from wms_shipment_line where item_id=#{itemId})
+        + (select count(1) from wms_stock_movement where item_id=#{itemId})</select>
+</mapper>

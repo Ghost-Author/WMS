@@ -183,14 +183,14 @@ if [[ "${marker_exists}" == "1" ]]; then
     backup_dir="/var/backups/yian-wms"
     backup_path="${backup_dir}/wms-before-1.0.0-${expected_commit:0:12}.sql"
     sudo install -d -o root -g root -m 0700 "${backup_dir}"
-    if [[ ! -s "${backup_path}" ]]; then
+    if ! sudo test -s "${backup_path}"; then
       backup_tmp="${backup_path}.tmp"
       sudo mysqldump --single-transaction --routines --triggers wms |
         sudo tee "${backup_tmp}" >/dev/null
       sudo chmod 0600 "${backup_tmp}"
       sudo mv "${backup_tmp}" "${backup_path}"
     fi
-    if [[ ! -s "${backup_path}" ]]; then
+    if ! sudo test -s "${backup_path}"; then
       echo "Database backup failed" >&2
       exit 1
     fi

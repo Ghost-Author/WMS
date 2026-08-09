@@ -39,7 +39,7 @@ npm ci
 npm run build:prod
 cd ..
 
-tar -C yian-wms-ui/dist -czf /tmp/wms-ui.tar.gz .
+COPYFILE_DISABLE=1 tar -C yian-wms-ui/dist -czf /tmp/wms-ui.tar.gz .
 cp yian-wms-admin/target/yian-wms-admin.jar /tmp/yian-wms-admin.jar
 EXPECTED_COMMIT="$(git rev-parse HEAD)"
 JAR_SHA256="$(shasum -a 256 /tmp/yian-wms-admin.jar | awk '{print $1}')"

@@ -1,6 +1,6 @@
 # Oracle Cloud 免费实例部署
 
-该方案面向 Oracle Cloud Always Free 的 ARM64 实例，使用 Docker Compose 同机运行 Nginx、RuoYi WMS、MySQL 8.4 和 Redis。
+该方案面向 Oracle Cloud Always Free 的 ARM64 实例，使用 Docker Compose 同机运行 Nginx、以安WMS、MySQL 8.4 和 Redis。
 
 ## 推荐实例参数
 
@@ -46,6 +46,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.oracle.yml logs m
 ```
 
 首次启动必须确认 MySQL 日志中的三个初始化脚本均执行成功。脚本只在空数据卷上运行；如果首次初始化失败，应先停止服务并检查具体 SQL 错误，不要直接反复重启或在已有业务数据时删除数据卷。
+
+已有数据库升级到 1.0.0 前必须先备份，再执行 `sql/migrations/V1.0.0__rebrand_to_yian_wms.sql`。初始化脚本只用于空数据库，不能作为升级脚本重复导入。
 
 访问 `http://服务器公网IP`，使用初始账号 `admin`、密码 `admin123` 登录。首次登录后应立即修改管理员密码，并验证登录、WMS 页面和文件上传功能。
 

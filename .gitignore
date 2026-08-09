@@ -50,7 +50,7 @@ nbdist/
 # WMS local runtime and frontend artifacts
 
 **/node_modules/
-ruoyi-ui/dist/
+yian-wms-ui/dist/
 data/
 .env
 !.env.example

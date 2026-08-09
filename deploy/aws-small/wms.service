@@ -1,5 +1,5 @@
 [Unit]
-Description=RuoYi WMS backend
+Description=以安WMS backend
 After=network-online.target mysql.service valkey-server.service
 Wants=network-online.target
 Requires=mysql.service valkey-server.service
@@ -10,7 +10,7 @@ User=wms
 Group=wms
 WorkingDirectory=/var/lib/wms
 EnvironmentFile=/etc/wms/wms.env
-ExecStart=/usr/bin/java -Xms128m -Xmx512m -Xss512k -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError -jar /opt/wms/ruoyi-admin.jar
+ExecStart=/usr/bin/java -Xms128m -Xmx512m -Xss512k -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError -jar /opt/wms/yian-wms-admin.jar
 Restart=on-failure
 RestartSec=5
 SuccessExitStatus=143

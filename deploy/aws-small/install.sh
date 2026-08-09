@@ -8,6 +8,8 @@ readonly ui_sha256="${UI_SHA256:-}"
 readonly staging_dir="${STAGING_DIR:-/tmp/wms-deploy}"
 readonly source_dir="/opt/wms-src"
 readonly app_dir="/opt/wms"
+readonly legacy_sql_fingerprint="d34f80965c3d2d6c9140641e680f74dbb7e95a9f950be0563e2e16625052f45f"
+readonly naming_migration="${source_dir}/sql/migrations/V1.0.0__rebrand_to_yian_wms.sql"
 
 if [[ ! "${expected_commit}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "EXPECTED_COMMIT must be a full 40-character lowercase Git SHA" >&2
@@ -25,9 +27,9 @@ fi
 
 readonly release_id="${expected_commit:0:12}-${ui_sha256:0:12}"
 readonly web_dir="/var/www/wms-${release_id}"
-readonly jar_release="${app_dir}/releases/ruoyi-admin-${expected_commit:0:12}-${jar_sha256:0:12}.jar"
+readonly jar_release="${app_dir}/releases/yian-wms-admin-${expected_commit:0:12}-${jar_sha256:0:12}.jar"
 
-for command_name in curl git mysql nginx openssl sed sha256sum sudo systemctl tar valkey-cli; do
+for command_name in curl git mysql mysqldump nginx openssl sed sha256sum sudo systemctl tar valkey-cli; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
     echo "Missing required command: ${command_name}" >&2
     exit 1
@@ -41,9 +43,10 @@ if [[ ! -d "${staging_dir}" || -L "${staging_dir}" ]] ||
 fi
 
 required_files=(
-  ruoyi-admin.jar
+  yian-wms-admin.jar
   wms-ui.tar.gz
   wms.service
+  wms-tunnel.service
   nginx.conf
   mysql.cnf
   wms.env.example
@@ -57,7 +60,7 @@ for artifact_name in "${required_files[@]}"; do
   fi
 done
 
-if [[ "$(sha256sum "${staging_dir}/ruoyi-admin.jar" | awk '{print $1}')" != "${jar_sha256}" ]] ||
+if [[ "$(sha256sum "${staging_dir}/yian-wms-admin.jar" | awk '{print $1}')" != "${jar_sha256}" ]] ||
    [[ "$(sha256sum "${staging_dir}/wms-ui.tar.gz" | awk '{print $1}')" != "${ui_sha256}" ]]; then
   echo "Deployment artifact checksum mismatch" >&2
   exit 1
@@ -121,6 +124,13 @@ if [[ ! -f /etc/wms/wms.env ]]; then
   shred -u "${env_tmp}"
 fi
 
+env_refresh="$(mktemp)"
+chmod 0600 "${env_refresh}"
+sudo sed '/^LOGGING_LEVEL_COM_[A-Z0-9_]*=/d' /etc/wms/wms.env > "${env_refresh}"
+echo 'LOGGING_LEVEL_COM_YIAN_WMS=info' >> "${env_refresh}"
+sudo install -o root -g root -m 0600 "${env_refresh}" /etc/wms/wms.env
+shred -u "${env_refresh}"
+
 db_password="$(sudo sed -n 's/^MYSQL_PASSWORD=//p' /etc/wms/wms.env)"
 valkey_password="$(sudo sed -n 's/^REDIS_PASSWORD=//p' /etc/wms/wms.env)"
 token_secret="$(sudo sed -n 's/^WMS_TOKEN_SECRET=//p' /etc/wms/wms.env)"
@@ -154,7 +164,7 @@ sudo mysql -e "CREATE DATABASE IF NOT EXISTS wms CHARACTER SET utf8mb4 COLLATE u
 sudo mysql -e "CREATE USER IF NOT EXISTS 'wms'@'127.0.0.1' IDENTIFIED BY '${db_password}'; ALTER USER 'wms'@'127.0.0.1' IDENTIFIED BY '${db_password}'; GRANT ALL PRIVILEGES ON wms.* TO 'wms'@'127.0.0.1'; FLUSH PRIVILEGES;"
 
 sql_fingerprint="$({
-  sha256sum "${source_dir}/sql/ry_20260320.sql"
+  sha256sum "${source_dir}/sql/yian_wms_20260320.sql"
   sha256sum "${source_dir}/sql/quartz.sql"
   sha256sum "${source_dir}/sql/wms.sql"
 } | awk '{print $1}' | sha256sum | awk '{print $1}')"
@@ -164,14 +174,37 @@ schema_table_count="$(sudo mysql -NBe "SELECT COUNT(*) FROM information_schema.t
 if [[ "${marker_exists}" == "1" ]]; then
   installed_fingerprint="$(sudo mysql -NBe "SELECT sql_fingerprint FROM wms.wms_deployment_version WHERE id=1")"
   if [[ "${installed_fingerprint}" != "${sql_fingerprint}" ]]; then
-    echo "Database schema fingerprint changed; an explicit migration is required" >&2
-    exit 1
+    if [[ "${installed_fingerprint}" != "${legacy_sql_fingerprint}" ]] ||
+       [[ ! -f "${naming_migration}" ]]; then
+      echo "Database schema fingerprint changed without a supported migration" >&2
+      exit 1
+    fi
+
+    backup_dir="/var/backups/yian-wms"
+    backup_path="${backup_dir}/wms-before-1.0.0-${expected_commit:0:12}.sql"
+    sudo install -d -o root -g root -m 0700 "${backup_dir}"
+    if [[ ! -s "${backup_path}" ]]; then
+      backup_tmp="${backup_path}.tmp"
+      sudo mysqldump --single-transaction --routines --triggers wms |
+        sudo tee "${backup_tmp}" >/dev/null
+      sudo chmod 0600 "${backup_tmp}"
+      sudo mv "${backup_tmp}" "${backup_path}"
+    fi
+    if [[ ! -s "${backup_path}" ]]; then
+      echo "Database backup failed" >&2
+      exit 1
+    fi
+
+    sudo mysql --database=wms < "${naming_migration}"
+    sudo mysql --database=wms -e "UPDATE wms_deployment_version SET sql_fingerprint='${sql_fingerprint}', source_commit='${expected_commit}', applied_at=CURRENT_TIMESTAMP WHERE id=1;"
+  else
+    sudo mysql --database=wms -e "UPDATE wms_deployment_version SET source_commit='${expected_commit}', applied_at=CURRENT_TIMESTAMP WHERE id=1;"
   fi
 elif [[ "${schema_table_count}" != "0" ]]; then
   echo "Database is non-empty but has no completed deployment marker; refusing a partial re-import" >&2
   exit 1
 else
-  sudo mysql --database=wms < "${source_dir}/sql/ry_20260320.sql"
+  sudo mysql --database=wms < "${source_dir}/sql/yian_wms_20260320.sql"
   sudo mysql --database=wms < "${source_dir}/sql/quartz.sql"
   sudo mysql --database=wms < "${source_dir}/sql/wms.sql"
   imported_table_count="$(sudo mysql -NBe "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='wms'")"
@@ -183,9 +216,9 @@ else
 fi
 
 jar_tmp="${jar_release}.tmp.$$"
-sudo install -o root -g root -m 0644 "${staging_dir}/ruoyi-admin.jar" "${jar_tmp}"
+sudo install -o root -g root -m 0644 "${staging_dir}/yian-wms-admin.jar" "${jar_tmp}"
 sudo mv "${jar_tmp}" "${jar_release}"
-sudo ln -sfn "${jar_release}" "${app_dir}/ruoyi-admin.jar"
+sudo ln -sfn "${jar_release}" "${app_dir}/yian-wms-admin.jar"
 
 web_tmp=""
 cleanup_web_tmp() {
@@ -226,6 +259,7 @@ else
 fi
 
 sudo install -o root -g root -m 0644 "${staging_dir}/wms.service" /etc/systemd/system/wms.service
+sudo install -o root -g root -m 0644 "${staging_dir}/wms-tunnel.service" /etc/systemd/system/wms-tunnel.service
 sudo install -o root -g root -m 0644 "${staging_dir}/nginx.conf" /etc/nginx/sites-available/wms
 if [[ -L /etc/nginx/sites-enabled/default ]]; then
   sudo unlink /etc/nginx/sites-enabled/default
@@ -235,6 +269,8 @@ sudo nginx -t
 
 sudo systemctl daemon-reload
 sudo systemctl enable wms
+sudo systemctl stop wms || true
+VALKEYCLI_AUTH="${valkey_password}" valkey-cli FLUSHDB >/dev/null
 sudo systemctl restart wms
 sudo systemctl reload nginx
 
@@ -253,9 +289,10 @@ fi
 
 sudo apt-get clean
 rm -f -- \
-  "${staging_dir}/ruoyi-admin.jar" \
+  "${staging_dir}/yian-wms-admin.jar" \
   "${staging_dir}/wms-ui.tar.gz" \
   "${staging_dir}/wms.service" \
+  "${staging_dir}/wms-tunnel.service" \
   "${staging_dir}/nginx.conf" \
   "${staging_dir}/mysql.cnf" \
   "${staging_dir}/wms.env.example"

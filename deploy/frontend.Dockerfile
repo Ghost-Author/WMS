@@ -1,9 +1,9 @@
 FROM node:22.23.1-alpine3.24 AS builder
 
 WORKDIR /app
-COPY ruoyi-ui/package.json ruoyi-ui/package-lock.json ./
+COPY yian-wms-ui/package.json yian-wms-ui/package-lock.json ./
 RUN npm ci --no-audit --registry=https://registry.npmjs.org
-COPY ruoyi-ui/ ./
+COPY yian-wms-ui/ ./
 RUN npm run build:prod
 
 FROM nginx:1.30.4-alpine

@@ -18,7 +18,7 @@ services:
       - --max-connections=100
     volumes:
       - mysql-data:/var/lib/mysql
-      - ../sql/ry_20260320.sql:/docker-entrypoint-initdb.d/01-ruoyi.sql:ro
+      - ../sql/yian_wms_20260320.sql:/docker-entrypoint-initdb.d/01-yian-wms.sql:ro
       - ../sql/quartz.sql:/docker-entrypoint-initdb.d/02-quartz.sql:ro
       - ../sql/wms.sql:/docker-entrypoint-initdb.d/03-wms.sql:ro
     healthcheck:
@@ -70,7 +70,7 @@ services:
       DRUID_WEB_STAT_ENABLED: "false"
       DRUID_CONSOLE_ENABLED: "false"
       SPRING_DEVTOOLS_RESTART_ENABLED: "false"
-      LOGGING_LEVEL_COM_RUOYI: info
+      LOGGING_LEVEL_COM_YIAN_WMS: info
       SERVER_TOMCAT_ACCEPT_COUNT: 100
       SERVER_TOMCAT_THREADS_MAX: 100
       SERVER_TOMCAT_THREADS_MIN_SPARE: 10

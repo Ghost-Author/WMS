@@ -34,15 +34,15 @@ install -d -m 0700 /tmp/wms-deploy
 
 ```bash
 mvn -q -DskipTests package
-cd ruoyi-ui
+cd yian-wms-ui
 npm ci
 npm run build:prod
 cd ..
 
-tar -C ruoyi-ui/dist -czf /tmp/wms-ui.tar.gz .
-cp ruoyi-admin/target/ruoyi-admin.jar /tmp/ruoyi-admin.jar
+tar -C yian-wms-ui/dist -czf /tmp/wms-ui.tar.gz .
+cp yian-wms-admin/target/yian-wms-admin.jar /tmp/yian-wms-admin.jar
 EXPECTED_COMMIT="$(git rev-parse HEAD)"
-JAR_SHA256="$(shasum -a 256 /tmp/ruoyi-admin.jar | awk '{print $1}')"
+JAR_SHA256="$(shasum -a 256 /tmp/yian-wms-admin.jar | awk '{print $1}')"
 UI_SHA256="$(shasum -a 256 /tmp/wms-ui.tar.gz | awk '{print $1}')"
 ```
 
@@ -50,8 +50,8 @@ UI_SHA256="$(shasum -a 256 /tmp/wms-ui.tar.gz | awk '{print $1}')"
 
 ```bash
 scp -i /path/to/key.pem \
-  /tmp/ruoyi-admin.jar /tmp/wms-ui.tar.gz \
-  deploy/aws-small/{install.sh,verify.sh,wms.service,nginx.conf,mysql.cnf,wms.env.example} \
+  /tmp/yian-wms-admin.jar /tmp/wms-ui.tar.gz \
+  deploy/aws-small/{install.sh,verify.sh,wms.service,wms-tunnel.service,nginx.conf,mysql.cnf,wms.env.example} \
   ubuntu@SERVER_IP:/tmp/wms-deploy/
 
 ssh -i /path/to/key.pem ubuntu@SERVER_IP \
@@ -64,7 +64,7 @@ ssh -i /path/to/key.pem ubuntu@SERVER_IP \
 ssh -t -i /path/to/key.pem ubuntu@SERVER_IP /tmp/wms-deploy/verify.sh
 ```
 
-安装脚本仅允许空数据库首次导入，并在三个 SQL 文件全部成功后记录指纹。若发现非空但没有完成标记的数据库会停止，避免在半导入状态下继续。SQL 指纹变化时必须先编写显式数据库迁移，不能靠重复运行初始化脚本升级。
+安装脚本仅允许空数据库首次导入，并在三个 SQL 文件全部成功后记录指纹。若发现非空但没有完成标记的数据库会停止，避免在半导入状态下继续。1.0.0 命名升级会先将数据库备份到 `/var/backups/yian-wms/`，再执行 `sql/migrations/V1.0.0__rebrand_to_yian_wms.sql` 并更新指纹；其他未知的 SQL 指纹变化仍会停止部署，必须先提供显式迁移，不能靠重复运行初始化脚本升级。每次部署切换后会清空该应用专用的 Valkey 数据库，用户需要重新登录，MySQL 业务数据不受影响。
 
 ## 可选临时公网隧道
 

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yian.wms.business.mapper.WmsReceiptMapper">
+    <resultMap id="ReceiptResult" type="WmsReceipt">
+        <id property="receiptId" column="receipt_id"/><result property="receiptNo" column="receipt_no"/>
+        <result property="receiptType" column="receipt_type"/><result property="warehouseId" column="warehouse_id"/>
+        <result property="warehouseName" column="warehouse_name"/><result property="supplierName" column="supplier_name"/>
+        <result property="receiptDate" column="receipt_date"/><result property="status" column="status"/>
+        <result property="totalQty" column="total_qty"/><result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/><result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/><result property="remark" column="remark"/>
+    </resultMap>
+    <resultMap id="ReceiptLineResult" type="WmsReceiptLine">
+        <id property="lineId" column="line_id"/><result property="receiptId" column="receipt_id"/>
+        <result property="itemId" column="item_id"/><result property="itemCode" column="item_code"/>
+        <result property="itemName" column="item_name"/><result property="specification" column="specification"/>
+        <result property="unit" column="unit"/><result property="locationId" column="location_id"/>
+        <result property="locationCode" column="location_code"/><result property="locationName" column="location_name"/>
+        <result property="batchNo" column="batch_no"/><result property="productionDate" column="production_date"/>
+        <result property="expiryDate" column="expiry_date"/><result property="plannedQty" column="planned_qty"/>
+        <result property="receivedQty" column="received_qty"/>
+    </resultMap>
+    <sql id="receiptSelect">select r.receipt_id,r.receipt_no,r.receipt_type,r.warehouse_id,w.warehouse_name,r.supplier_name,
+        r.receipt_date,r.status,r.total_qty,r.create_by,r.create_time,r.update_by,r.update_time,r.remark
+        from wms_receipt r left join wms_warehouse w on w.warehouse_id=r.warehouse_id</sql>
+    <select id="selectReceiptById" resultMap="ReceiptResult"><include refid="receiptSelect"/> where r.receipt_id=#{receiptId}</select>
+    <select id="selectReceiptForUpdate" resultMap="ReceiptResult">
+        select r.receipt_id,r.receipt_no,r.receipt_type,r.warehouse_id,r.supplier_name,r.receipt_date,r.status,r.total_qty,
+        r.create_by,r.create_time,r.update_by,r.update_time,r.remark from wms_receipt r where r.receipt_id=#{receiptId} for update
+    </select>
+    <select id="selectReceiptList" parameterType="WmsReceipt" resultMap="ReceiptResult">
+        <include refid="receiptSelect"/><where>
+        <if test="receiptNo != null and receiptNo != ''">and r.receipt_no like concat('%',#{receiptNo},'%')</if>
+        <if test="receiptType != null and receiptType != ''">and r.receipt_type=#{receiptType}</if>
+        <if test="warehouseId != null">and r.warehouse_id=#{warehouseId}</if>
+        <if test="supplierName != null and supplierName != ''">and r.supplier_name like concat('%',#{supplierName},'%')</if>
+        <if test="status != null and status != ''">and r.status=#{status}</if>
+        <if test="receiptDate != null">and r.receipt_date=#{receiptDate}</if>
+        <if test="params.beginTime != null and params.beginTime != ''">and r.receipt_date &gt;= #{params.beginTime}</if>
+        <if test="params.endTime != null and params.endTime != ''">and r.receipt_date &lt; date_add(#{params.endTime}, interval 1 day)</if>
+        </where> order by r.receipt_date desc,r.receipt_id desc
+    </select>
+    <select id="selectLinesByReceiptId" resultMap="ReceiptLineResult">
+        select l.line_id,l.receipt_id,l.item_id,i.item_code,i.item_name,i.specification,i.unit,l.location_id,
+        p.location_code,p.location_name,l.batch_no,l.production_date,l.expiry_date,l.planned_qty,l.received_qty
+        from wms_receipt_line l left join wms_item i on i.item_id=l.item_id
+        left join wms_location p on p.location_id=l.location_id where l.receipt_id=#{receiptId} order by l.line_id
+    </select>
+    <insert id="insertReceipt" parameterType="WmsReceipt" useGeneratedKeys="true" keyProperty="receiptId">
+        insert into wms_receipt (receipt_no,receipt_type,warehouse_id,supplier_name,receipt_date,status,total_qty,create_by,create_time,remark)
+        values (#{receiptNo},#{receiptType},#{warehouseId},#{supplierName},#{receiptDate},#{status},#{totalQty},#{createBy},sysdate(),#{remark})
+    </insert>
+    <update id="updateReceipt" parameterType="WmsReceipt">
+        update wms_receipt set receipt_type=#{receiptType},warehouse_id=#{warehouseId},supplier_name=#{supplierName},receipt_date=#{receiptDate},
+        total_qty=#{totalQty},update_by=#{updateBy},update_time=sysdate(),remark=#{remark}
+        where receipt_id=#{receiptId} and status='DRAFT'
+    </update>
+    <delete id="deleteReceiptById">delete from wms_receipt where receipt_id=#{receiptId} and status='DRAFT'</delete>
+    <delete id="deleteLinesByReceiptId">delete from wms_receipt_line where receipt_id=#{receiptId}</delete>
+    <insert id="insertLines">
+        insert into wms_receipt_line (receipt_id,item_id,location_id,batch_no,production_date,expiry_date,planned_qty,received_qty) values
+        <foreach collection="lines" item="line" separator=",">
+            (#{receiptId},#{line.itemId},#{line.locationId},#{line.batchNo},#{line.productionDate},#{line.expiryDate},#{line.plannedQty},#{line.receivedQty})
+        </foreach>
+    </insert>
+    <update id="markCompleted">
+        update wms_receipt set status='COMPLETED',total_qty=#{totalQty},update_by=#{updateBy},update_time=sysdate()
+        where receipt_id=#{receiptId} and status='DRAFT'
+    </update>
+</mapper>

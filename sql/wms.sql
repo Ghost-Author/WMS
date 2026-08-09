@@ -1,6 +1,6 @@
--- 智仓 WMS 初始化脚本
+-- 以安WMS 初始化脚本
 -- 适用：MySQL 8.x / utf8mb4
--- 执行顺序：ry_20260320.sql -> quartz.sql -> wms.sql
+-- 执行顺序：yian_wms_20260320.sql -> quartz.sql -> wms.sql
 -- 注意：重复执行会重建全部 wms_* 业务表，仅用于全新或可丢弃的开发环境。
 
 SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci;
@@ -284,7 +284,7 @@ VALUES
   (1, 'INITIAL', 'INIT-20260806-001', 1, 2, 1, 'BATCH-20260801', 120.0000, 120.0000, 'admin', NOW(), '演示期初库存'),
   (2, 'INITIAL', 'INIT-20260806-002', 1, 3, 2, 'BATCH-20260715',  48.5000,  48.5000, 'admin', NOW(), '演示期初库存');
 
--- RuoYi 动态菜单。2000-2199 为本项目保留号段，重跑脚本时刷新该号段。
+-- 以安WMS 动态菜单。2000-2199 为本项目保留号段，重跑脚本时刷新该号段。
 DELETE FROM sys_role_menu WHERE menu_id BETWEEN 2000 AND 2199;
 DELETE FROM sys_menu WHERE menu_id BETWEEN 2000 AND 2199;
 

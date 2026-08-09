@@ -2,12 +2,12 @@ FROM maven:3.9.16-eclipse-temurin-17 AS builder
 
 WORKDIR /workspace
 COPY . .
-RUN mvn -B -ntp -pl ruoyi-admin -am clean package -DskipTests
+RUN mvn -B -ntp -pl yian-wms-admin -am clean package -DskipTests
 
 FROM eclipse-temurin:17-jre-noble
 
 WORKDIR /app
-COPY --from=builder --chown=10001:10001 /workspace/ruoyi-admin/target/ruoyi-admin.jar /app/app.jar
+COPY --from=builder --chown=10001:10001 /workspace/yian-wms-admin/target/yian-wms-admin.jar /app/app.jar
 RUN mkdir -p /app/data/uploadPath /app/data/logs && chown -R 10001:10001 /app
 
 USER 10001:10001

@@ -1,0 +1,5 @@
+========================================
+               以安WMS
+        Warehouse Management System
+        Application Version: 1.0.0
+========================================

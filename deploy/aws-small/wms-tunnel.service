@@ -1,5 +1,5 @@
 [Unit]
-Description=Temporary Cloudflare Quick Tunnel for RuoYi WMS
+Description=Temporary Cloudflare Quick Tunnel for 以安WMS
 After=network-online.target nginx.service
 Wants=network-online.target
 Requires=nginx.service

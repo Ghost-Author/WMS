@@ -53,6 +53,8 @@ druid_username="$(sudo sed -n 's/^DRUID_USERNAME=//p' /etc/wms/wms.env)"
 druid_password="$(sudo sed -n 's/^DRUID_PASSWORD=//p' /etc/wms/wms.env)"
 druid_login_page="$(curl -fsS http://127.0.0.1/prod-api/druid/login.html)"
 [[ "${druid_login_page}" == *'name="loginUsername"'* ]]
+curl -fsS -o /dev/null http://127.0.0.1/prod-api/druid/css/bootstrap.min.css
+curl -fsS -o /dev/null http://127.0.0.1/prod-api/druid/js/jquery.min.js
 druid_invalid_login_response="$(
   printf 'loginUsername=%s&loginPassword=%s' "${druid_username}" '__invalid_verification_password__' |
     curl -fsS --data-binary @- http://127.0.0.1/prod-api/druid/submitLogin
@@ -69,8 +71,8 @@ druid_index_page="$(curl -fsS -b "${druid_cookie}" http://127.0.0.1/prod-api/dru
 [[ "${druid_index_page}" == *'Druid Stat Index'* ]]
 druid_basic_json="$(curl -fsS -b "${druid_cookie}" http://127.0.0.1/prod-api/druid/basic.json)"
 printf '%s' "${druid_basic_json}" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("ResultCode") == 1 and data.get("Content", {}).get("ResetEnable") is False'
-rm -f -- "${druid_cookie}"
-druid_cookie=""
+druid_previous_session_id="$(awk '$6 == "JSESSIONID" { print $7 }' "${druid_cookie}")"
+[[ -n "${druid_previous_session_id}" ]]
 druid_password=""
 
 [[ "$(curl -fsS http://127.0.0.1/healthz)" == "ok" ]]
@@ -95,6 +97,23 @@ token="$(printf '%s' "${login_json}" | python3 -c 'import json,sys; data=json.lo
 info_json="$(curl -fsS -H "Authorization: Bearer ${token}" http://127.0.0.1/prod-api/getInfo)"
 printf '%s' "${info_json}" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("code") == 200 and data.get("user", {}).get("userName") == "admin"'
 
+druid_unauthorized_json="$(curl -fsS -X POST http://127.0.0.1/prod-api/monitor/druid/session)"
+printf '%s' "${druid_unauthorized_json}" | python3 -c 'import json,sys; assert json.load(sys.stdin).get("code") == 401'
+
+druid_session_json="$(curl -fsS -b "${druid_cookie}" -c "${druid_cookie}" -H "Authorization: Bearer ${token}" -X POST http://127.0.0.1/prod-api/monitor/druid/session)"
+printf '%s' "${druid_session_json}" | python3 -c 'import json,sys; assert json.load(sys.stdin).get("code") == 200'
+druid_session_id="$(awk '$6 == "JSESSIONID" { print $7 }' "${druid_cookie}")"
+[[ -n "${druid_session_id}" ]]
+[[ "${druid_session_id}" != "${druid_previous_session_id}" ]]
+druid_sso_index_page="$(curl -fsS -b "${druid_cookie}" http://127.0.0.1/prod-api/druid/index.html)"
+[[ "${druid_sso_index_page}" == *'Druid Stat Index'* ]]
+druid_session_delete_json="$(curl -fsS -b "${druid_cookie}" -c "${druid_cookie}" -H "Authorization: Bearer ${token}" -X DELETE http://127.0.0.1/prod-api/monitor/druid/session)"
+printf '%s' "${druid_session_delete_json}" | python3 -c 'import json,sys; assert json.load(sys.stdin).get("code") == 200'
+druid_expired_result="$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -H "Cookie: JSESSIONID=${druid_session_id}" http://127.0.0.1/prod-api/druid/index.html)"
+[[ "${druid_expired_result}" == "302 http://127.0.0.1/prod-api/druid/login.html" ]]
+rm -f -- "${druid_cookie}"
+druid_cookie=""
+
 dashboard_json="$(curl -fsS -H "Authorization: Bearer ${token}" http://127.0.0.1/prod-api/wms/dashboard/summary)"
 printf '%s' "${dashboard_json}" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("code") == 200 and isinstance(data.get("data"), dict)'
 
@@ -113,11 +132,28 @@ sudo test -f "${uploaded_path}"
 sudo rm -f -- "${uploaded_path}"
 uploaded_path=""
 
+druid_cookie="$(mktemp)"
+chmod 0600 "${druid_cookie}"
+druid_logout_session_json="$(curl -fsS -c "${druid_cookie}" -H "Authorization: Bearer ${token}" -X POST http://127.0.0.1/prod-api/monitor/druid/session)"
+printf '%s' "${druid_logout_session_json}" | python3 -c 'import json,sys; assert json.load(sys.stdin).get("code") == 200'
+druid_logout_session_id="$(awk '$6 == "JSESSIONID" { print $7 }' "${druid_cookie}")"
+[[ -n "${druid_logout_session_id}" ]]
+logout_json="$(curl -fsS -b "${druid_cookie}" -c "${druid_cookie}" -H "Authorization: Bearer ${token}" -X POST http://127.0.0.1/prod-api/logout)"
+printf '%s' "${logout_json}" | python3 -c 'import json,sys; assert json.load(sys.stdin).get("code") == 200'
+druid_after_logout_result="$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -H "Cookie: JSESSIONID=${druid_logout_session_id}" http://127.0.0.1/prod-api/druid/index.html)"
+[[ "${druid_after_logout_result}" == "302 http://127.0.0.1/prod-api/druid/login.html" ]]
+token_after_logout_json="$(curl -fsS -H "Authorization: Bearer ${token}" http://127.0.0.1/prod-api/getInfo)"
+printf '%s' "${token_after_logout_json}" | python3 -c 'import json,sys; assert json.load(sys.stdin).get("code") == 401'
+rm -f -- "${druid_cookie}"
+druid_cookie=""
+
 echo "services=ok"
 echo "ports=ok backend=${backend_socket}"
 echo "database=ok tables=${table_count} users=${user_count} warehouses=${warehouse_count}"
 echo "valkey=ok"
 echo "druid_console=ok"
+echo "druid_wms_session=ok"
+echo "logout_session=ok"
 echo "captcha=ok"
 echo "admin_login=ok"
 echo "wms_dashboard=ok"

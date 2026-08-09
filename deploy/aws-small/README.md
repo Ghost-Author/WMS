@@ -58,19 +58,19 @@ ssh -i /path/to/key.pem ubuntu@SERVER_IP \
   "EXPECTED_COMMIT=${EXPECTED_COMMIT} JAR_SHA256=${JAR_SHA256} UI_SHA256=${UI_SHA256} /tmp/wms-deploy/install.sh"
 ```
 
-首次验收直接运行以下命令，脚本会隐藏管理员密码输入，并自动验证 Druid 独立凭据。登录成功后必须立即把默认密码 `admin123` 改掉；改密后再次验收时输入新密码。
+首次验收直接运行以下命令，脚本会隐藏管理员密码输入，并自动验证 Druid 独立凭据、静态资源和 WMS 权限会话。登录成功后必须立即把默认密码 `admin123` 改掉；改密后再次验收时输入新密码。
 
 ```bash
 ssh -t -i /path/to/key.pem ubuntu@SERVER_IP /tmp/wms-deploy/verify.sh
 ```
 
-首次进入“数据监控”时，需在服务器的私密终端查看独立登录凭据；不要把输出粘贴到聊天群、工单或公开日志：
+“数据监控”菜单会根据当前 WMS 用户的 `monitor:druid:list` 权限自动建立 15 分钟短期会话，不需要再次输入账号密码。独立 Druid 凭据仅用于服务器本机应急诊断；如需查看，请只在服务器的私密终端执行，且不要把输出粘贴到聊天群、工单或公开日志：
 
 ```bash
 sudo sed -n '/^DRUID_USERNAME=/p;/^DRUID_PASSWORD=/p' /etc/wms/wms.env
 ```
 
-`DRUID_ALLOW=127.0.0.1` 只保证后端控制台经同机 Nginx 入口访问，不能识别 Cloudflare 隧道后的真实访客；公网保护依赖这组独立强密码。Druid 控制台中的“重置全部”功能已禁用。
+`DRUID_ALLOW=127.0.0.1` 只保证后端控制台经同机 Nginx 入口访问，不能识别 Cloudflare 隧道后的真实访客；日常入口由 WMS JWT 权限和短期 HttpOnly 会话保护，应急原生入口仍依赖独立强密码。Druid 控制台中的“重置全部”功能已禁用。
 
 安装脚本仅允许空数据库首次导入，并在三个 SQL 文件全部成功后记录指纹。若发现非空但没有完成标记的数据库会停止，避免在半导入状态下继续。1.0.0 命名升级会先将数据库备份到 `/var/backups/yian-wms/`，再执行 `sql/migrations/V1.0.0__rebrand_to_yian_wms.sql` 并更新指纹；其他未知的 SQL 指纹变化仍会停止部署，必须先提供显式迁移，不能靠重复运行初始化脚本升级。每次部署切换后会清空该应用专用的 Valkey 数据库，用户需要重新登录，MySQL 业务数据不受影响。
 

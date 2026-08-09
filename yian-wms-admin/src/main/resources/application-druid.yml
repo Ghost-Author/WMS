@@ -43,6 +43,8 @@ spring:
                 enabled: ${DRUID_WEB_STAT_ENABLED:false}
             statViewServlet:
                 enabled: ${DRUID_CONSOLE_ENABLED:false}
+                # 禁用控制台中的“重置全部”操作，避免误清空监控数据
+                reset-enable: false
                 # 管理入口默认关闭；开启时默认只允许本机访问
                 allow: ${DRUID_ALLOW:127.0.0.1}
                 url-pattern: /druid/*

@@ -11,6 +11,22 @@ readonly app_dir="/opt/wms"
 readonly legacy_sql_fingerprint="d34f80965c3d2d6c9140641e680f74dbb7e95a9f950be0563e2e16625052f45f"
 readonly naming_migration="${source_dir}/sql/migrations/V1.0.0__rebrand_to_yian_wms.sql"
 
+env_tmp=""
+env_refresh=""
+valkey_tmp=""
+cleanup_install() {
+  local exit_code=$?
+  local secret_tmp
+  trap - EXIT
+  for secret_tmp in "${env_tmp}" "${env_refresh}" "${valkey_tmp}"; do
+    if [[ -n "${secret_tmp}" && -f "${secret_tmp}" && ! -L "${secret_tmp}" && -O "${secret_tmp}" ]]; then
+      shred -u -- "${secret_tmp}" || rm -f -- "${secret_tmp}"
+    fi
+  done
+  exit "${exit_code}"
+}
+trap cleanup_install EXIT
+
 if [[ ! "${expected_commit}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "EXPECTED_COMMIT must be a full 40-character lowercase Git SHA" >&2
   exit 1
@@ -29,7 +45,7 @@ readonly release_id="${expected_commit:0:12}-${ui_sha256:0:12}"
 readonly web_dir="/var/www/wms-${release_id}"
 readonly jar_release="${app_dir}/releases/yian-wms-admin-${expected_commit:0:12}-${jar_sha256:0:12}.jar"
 
-for command_name in curl git mysql mysqldump nginx openssl sed sha256sum sudo systemctl tar valkey-cli; do
+for command_name in curl git mysql mysqldump nginx openssl sed sha256sum shred sudo systemctl tar valkey-cli; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
     echo "Missing required command: ${command_name}" >&2
     exit 1
@@ -113,23 +129,39 @@ if [[ ! -f /etc/wms/wms.env ]]; then
   db_password="$(openssl rand -hex 24)"
   valkey_password="$(openssl rand -hex 24)"
   token_secret="$(openssl rand -hex 32)"
+  druid_password="$(openssl rand -hex 24)"
   env_tmp="$(mktemp)"
   chmod 0600 "${env_tmp}"
   sed \
     -e "s/CHANGE_ME_DATABASE_PASSWORD/${db_password}/" \
     -e "s/CHANGE_ME_VALKEY_PASSWORD/${valkey_password}/" \
     -e "s/CHANGE_ME_WITH_AT_LEAST_32_RANDOM_CHARACTERS/${token_secret}/" \
+    -e "s/CHANGE_ME_DRUID_PASSWORD/${druid_password}/" \
     "${staging_dir}/wms.env.example" > "${env_tmp}"
   sudo install -o root -g root -m 0600 "${env_tmp}" /etc/wms/wms.env
   shred -u "${env_tmp}"
+  env_tmp=""
+fi
+
+druid_password="$(sudo sed -n 's/^DRUID_PASSWORD=//p' /etc/wms/wms.env)"
+if [[ ! "${druid_password}" =~ ^[0-9a-f]{48}$ ]]; then
+  druid_password="$(openssl rand -hex 24)"
 fi
 
 env_refresh="$(mktemp)"
 chmod 0600 "${env_refresh}"
-sudo sed '/^LOGGING_LEVEL_COM_[A-Z0-9_]*=/d' /etc/wms/wms.env > "${env_refresh}"
-echo 'LOGGING_LEVEL_COM_YIAN_WMS=info' >> "${env_refresh}"
+sudo sed -E '/^(LOGGING_LEVEL_COM_[A-Z0-9_]*|DRUID_WEB_STAT_ENABLED|DRUID_CONSOLE_ENABLED|DRUID_ALLOW|DRUID_USERNAME|DRUID_PASSWORD)=/d' /etc/wms/wms.env > "${env_refresh}"
+{
+  echo 'LOGGING_LEVEL_COM_YIAN_WMS=info'
+  echo 'DRUID_WEB_STAT_ENABLED=true'
+  echo 'DRUID_CONSOLE_ENABLED=true'
+  echo 'DRUID_ALLOW=127.0.0.1'
+  echo 'DRUID_USERNAME=druid_admin'
+  echo "DRUID_PASSWORD=${druid_password}"
+} >> "${env_refresh}"
 sudo install -o root -g root -m 0600 "${env_refresh}" /etc/wms/wms.env
 shred -u "${env_refresh}"
+env_refresh=""
 
 db_password="$(sudo sed -n 's/^MYSQL_PASSWORD=//p' /etc/wms/wms.env)"
 valkey_password="$(sudo sed -n 's/^REDIS_PASSWORD=//p' /etc/wms/wms.env)"
@@ -137,7 +169,8 @@ token_secret="$(sudo sed -n 's/^WMS_TOKEN_SECRET=//p' /etc/wms/wms.env)"
 
 if [[ ! "${db_password}" =~ ^[0-9a-f]{48}$ ]] ||
    [[ ! "${valkey_password}" =~ ^[0-9a-f]{48}$ ]] ||
-   [[ ! "${token_secret}" =~ ^[0-9a-f]{64}$ ]]; then
+   [[ ! "${token_secret}" =~ ^[0-9a-f]{64}$ ]] ||
+   [[ ! "${druid_password}" =~ ^[0-9a-f]{48}$ ]]; then
   echo "Invalid generated secret format" >&2
   exit 1
 fi
@@ -153,6 +186,7 @@ chmod 0600 "${valkey_tmp}"
 } > "${valkey_tmp}"
 sudo install -o root -g valkey -m 0640 "${valkey_tmp}" /etc/wms/valkey-secret.conf
 shred -u "${valkey_tmp}"
+valkey_tmp=""
 
 if ! sudo grep -qxF "include /etc/wms/valkey-secret.conf" /etc/valkey/valkey.conf; then
   echo "include /etc/wms/valkey-secret.conf" | sudo tee -a /etc/valkey/valkey.conf >/dev/null

@@ -29,7 +29,9 @@ cp deploy/.env.example deploy/.env
 chmod 600 deploy/.env
 ```
 
-编辑 `deploy/.env`，将所有 `CHANGE_ME` 替换为随机值。可使用 `openssl rand -hex 24` 分别生成数据库和 Redis 密码，使用 `openssl rand -hex 32` 生成 JWT 密钥。
+编辑 `deploy/.env`，将所有 `CHANGE_ME` 替换为随机值。可使用 `openssl rand -hex 24` 分别生成数据库、Redis 和 Druid 监控密码，使用 `openssl rand -hex 32` 生成 JWT 密钥。Druid 使用独立账号 `druid_admin`，不应与 WMS 管理员共用密码。
+
+容器部署的 `DRUID_ALLOW` 默认留空，以允许前端 Nginx 容器访问后端控制台；这不是公网访问控制。公开服务必须保留独立强密码，并限制服务器或反向代理的访问来源。
 
 确认没有遗留占位值：
 

@@ -67,8 +67,11 @@ services:
       WMS_UPLOAD_PATH: /app/data/uploadPath
       WMS_LOG_PATH: /app/data/logs
       SPRINGDOC_ENABLED: "false"
-      DRUID_WEB_STAT_ENABLED: "false"
-      DRUID_CONSOLE_ENABLED: "false"
+      DRUID_WEB_STAT_ENABLED: "${DRUID_WEB_STAT_ENABLED:-true}"
+      DRUID_CONSOLE_ENABLED: "${DRUID_CONSOLE_ENABLED:-true}"
+      DRUID_ALLOW: "${DRUID_ALLOW:-}"
+      DRUID_USERNAME: "${DRUID_USERNAME:-druid_admin}"
+      DRUID_PASSWORD: "${DRUID_PASSWORD:?Set DRUID_PASSWORD in deploy/.env}"
       SPRING_DEVTOOLS_RESTART_ENABLED: "false"
       LOGGING_LEVEL_COM_YIAN_WMS: info
       SERVER_TOMCAT_ACCEPT_COUNT: 100

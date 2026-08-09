@@ -3,11 +3,15 @@ set -Eeuo pipefail
 
 upload_tmp=""
 uploaded_path=""
+druid_cookie=""
 cleanup_verify() {
   local exit_code=$?
   trap - EXIT ERR
   if [[ -n "${upload_tmp}" ]]; then
     rm -f -- "${upload_tmp}"
+  fi
+  if [[ -n "${druid_cookie}" ]]; then
+    rm -f -- "${druid_cookie}"
   fi
   if [[ "${uploaded_path}" =~ ^/var/lib/wms/uploadPath/upload/[0-9]{4}/[0-9]{2}/[0-9]{2}/[^/]+$ ]]; then
     sudo rm -f -- "${uploaded_path}"
@@ -44,6 +48,30 @@ warehouse_count="$(sudo mysql -NBe "SELECT COUNT(*) FROM wms.wms_warehouse")"
 
 valkey_password="$(sudo sed -n 's/^REDIS_PASSWORD=//p' /etc/wms/wms.env)"
 [[ "$(VALKEYCLI_AUTH="${valkey_password}" valkey-cli --raw ping 2>/dev/null)" == "PONG" ]]
+
+druid_username="$(sudo sed -n 's/^DRUID_USERNAME=//p' /etc/wms/wms.env)"
+druid_password="$(sudo sed -n 's/^DRUID_PASSWORD=//p' /etc/wms/wms.env)"
+druid_login_page="$(curl -fsS http://127.0.0.1/prod-api/druid/login.html)"
+[[ "${druid_login_page}" == *'name="loginUsername"'* ]]
+druid_invalid_login_response="$(
+  printf 'loginUsername=%s&loginPassword=%s' "${druid_username}" '__invalid_verification_password__' |
+    curl -fsS --data-binary @- http://127.0.0.1/prod-api/druid/submitLogin
+)"
+[[ "${druid_invalid_login_response}" == "error" ]]
+druid_cookie="$(mktemp)"
+chmod 0600 "${druid_cookie}"
+druid_login_response="$(
+  printf 'loginUsername=%s&loginPassword=%s' "${druid_username}" "${druid_password}" |
+    curl -fsS -c "${druid_cookie}" --data-binary @- http://127.0.0.1/prod-api/druid/submitLogin
+)"
+[[ "${druid_login_response}" == "success" ]]
+druid_index_page="$(curl -fsS -b "${druid_cookie}" http://127.0.0.1/prod-api/druid/index.html)"
+[[ "${druid_index_page}" == *'Druid Stat Index'* ]]
+druid_basic_json="$(curl -fsS -b "${druid_cookie}" http://127.0.0.1/prod-api/druid/basic.json)"
+printf '%s' "${druid_basic_json}" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("ResultCode") == 1 and data.get("Content", {}).get("ResetEnable") is False'
+rm -f -- "${druid_cookie}"
+druid_cookie=""
+druid_password=""
 
 [[ "$(curl -fsS http://127.0.0.1/healthz)" == "ok" ]]
 captcha_json="$(curl -fsS http://127.0.0.1/prod-api/captchaImage)"
@@ -89,6 +117,7 @@ echo "services=ok"
 echo "ports=ok backend=${backend_socket}"
 echo "database=ok tables=${table_count} users=${user_count} warehouses=${warehouse_count}"
 echo "valkey=ok"
+echo "druid_console=ok"
 echo "captcha=ok"
 echo "admin_login=ok"
 echo "wms_dashboard=ok"

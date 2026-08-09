@@ -126,9 +126,9 @@ function applyFrameTheme(frame) {
   style.id = 'yian-wms-druid-theme'
   style.textContent = `
     html, body { background: #f5f7fb !important; color: #101828; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; }
-    .navbar-inverse { border: 0 !important; background: linear-gradient(120deg, #155eef 0%, #2970ff 55%, #53b1fd 100%) !important; box-shadow: 0 4px 14px rgba(21, 94, 239, .18); }
-    .navbar-inverse .navbar-brand, .navbar-inverse .navbar-nav > li > a { color: rgba(255,255,255,.92) !important; }
-    .navbar-inverse .navbar-nav > .active > a, .navbar-inverse .navbar-nav > li > a:hover { color: #fff !important; background: rgba(255,255,255,.13) !important; }
+    .navbar .navbar-inner { border: 0 !important; background: linear-gradient(120deg, #155eef 0%, #2970ff 55%, #53b1fd 100%) !important; box-shadow: 0 4px 14px rgba(21, 94, 239, .18) !important; }
+    .navbar .brand, .navbar .nav > li > a { color: rgba(255,255,255,.92) !important; text-shadow: none !important; }
+    .navbar .nav > .active > a, .navbar .nav > li > a:hover { color: #fff !important; background: rgba(255,255,255,.13) !important; box-shadow: none !important; }
     .well, .panel, .table { border-color: #eaecf0 !important; border-radius: 10px; box-shadow: none !important; }
     .table > thead > tr > th { color: #475467; background: #f9fafb; border-bottom-color: #eaecf0; }
     .btn-primary { border-color: #1570ef !important; background: #1570ef !important; }
@@ -158,7 +158,9 @@ function handleFrameLoad(event) {
       loadMonitor(false)
       return
     }
-    if (!currentPath.includes('/druid/') || !frameDocument?.querySelector('.navbar')) {
+    const isDruidPage = currentPath.includes('/druid/')
+      && (frameDocument?.title?.startsWith('Druid ') || frameDocument?.querySelector('#dataTable'))
+    if (!isDruidPage) {
       frameLoading.value = false
       loadError.value = '监控服务返回了异常页面，请稍后重试'
       return

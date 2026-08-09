@@ -76,7 +76,7 @@ sudo sed -n '/^DRUID_USERNAME=/p;/^DRUID_PASSWORD=/p' /etc/wms/wms.env
 
 ## 可选临时公网隧道
 
-Cloudflare Quick Tunnel 不需要账号，会生成随机的 `*.trycloudflare.com` 地址。它没有可用性承诺，服务重启后地址可能改变，只适合开发和临时测试。安装官方 `cloudflared` 后启用：
+Cloudflare Quick Tunnel 不需要账号，会生成随机的 `*.trycloudflare.com` 地址。它没有可用性承诺，只适合开发和临时测试。隧道与 Nginx 使用弱依赖，普通 Nginx 更新或重启不会主动重建隧道；但服务器重启、`cloudflared` 更新或隧道服务自身重启后，地址仍可能改变。安装官方 `cloudflared` 后启用：
 
 ```bash
 sudo install -o root -g root -m 0644 wms-tunnel.service /etc/systemd/system/wms-tunnel.service

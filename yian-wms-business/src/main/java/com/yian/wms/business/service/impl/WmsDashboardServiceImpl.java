@@ -14,4 +14,6 @@ public class WmsDashboardServiceImpl implements IWmsDashboardService
     public WmsDashboardServiceImpl(WmsDashboardMapper mapper){this.mapper=mapper;}
     @Override public Map<String,Object> selectSummary(){return mapper.selectSummary();}
     @Override public List<WmsStockMovement> selectRecentMovements(){return mapper.selectRecentMovements();}
+    @Override public List<Map<String,Object>> selectOperationTrend(){return mapper.selectOperationTrend();}
+    @Override public List<Map<String,Object>> selectWarehouseStockDistribution(){return mapper.selectWarehouseStockDistribution();}
 }

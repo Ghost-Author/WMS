@@ -24,5 +24,6 @@ public class WmsShipmentController extends BaseController
     @PreAuthorize("@ss.hasPermi('wms:shipment:edit')") @Log(title="出库单",businessType=BusinessType.UPDATE) @PutMapping public AjaxResult edit(@Validated @RequestBody WmsShipment v){v.setUpdateBy(getUsername());return toAjax(service.updateShipment(v));}
     @PreAuthorize("@ss.hasPermi('wms:shipment:remove')") @Log(title="出库单",businessType=BusinessType.DELETE) @DeleteMapping("/{ids}") public AjaxResult remove(@PathVariable Long[] ids){service.deleteShipmentByIds(ids);return success();}
     @PreAuthorize("@ss.hasPermi('wms:shipment:complete')") @Log(title="出库单完成",businessType=BusinessType.UPDATE) @PutMapping("/{id}/complete") public AjaxResult complete(@PathVariable Long id){service.completeShipment(id,getUsername());return success();}
+    @PreAuthorize("@ss.hasPermi('wms:shipment:cancel')") @Log(title="出库单取消",businessType=BusinessType.UPDATE) @PutMapping("/{id}/cancel") public AjaxResult cancel(@PathVariable Long id){service.cancelShipment(id,getUsername());return success();}
     @PreAuthorize("@ss.hasPermi('wms:shipment:export')") @Log(title="出库单",businessType=BusinessType.EXPORT) @PostMapping("/export") public void export(HttpServletResponse r,WmsShipment q){List<WmsShipment> l=service.selectShipmentList(q);new ExcelUtil<WmsShipment>(WmsShipment.class).exportExcel(r,l,"出库单数据");}
 }

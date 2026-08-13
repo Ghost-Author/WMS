@@ -8,4 +8,6 @@ public interface WmsDashboardMapper
 {
     Map<String, Object> selectSummary();
     List<WmsStockMovement> selectRecentMovements();
+    List<Map<String, Object>> selectOperationTrend();
+    List<Map<String, Object>> selectWarehouseStockDistribution();
 }

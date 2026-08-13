@@ -33,6 +33,7 @@
         <el-col :span="1.5"><el-button type="primary" plain icon="Plus" @click="handleAdd" v-hasPermi="['wms:warehouse:add']">新增</el-button></el-col>
         <el-col :span="1.5"><el-button type="success" plain icon="Edit" :disabled="single" @click="handleUpdate()" v-hasPermi="['wms:warehouse:edit']">修改</el-button></el-col>
         <el-col :span="1.5"><el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete()" v-hasPermi="['wms:warehouse:remove']">删除</el-button></el-col>
+        <el-col :span="1.5"><el-button type="warning" plain icon="Download" @click="handleExport" v-hasPermi="['wms:warehouse:export']">导出</el-button></el-col>
         <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
       </el-row>
 
@@ -114,6 +115,7 @@ async function getList() {
 }
 function handleQuery() { queryParams.value.pageNum = 1; getList() }
 function resetQuery() { proxy.resetForm('queryRef'); handleQuery() }
+function handleExport() { proxy.download('wms/warehouse/export', queryParams.value, `仓库数据_${Date.now()}.xlsx`) }
 function handleSelectionChange(selection) { ids.value = selection.map(item => item.warehouseId) }
 function handleAdd() { reset(); title.value = '新增仓库'; open.value = true }
 async function handleUpdate(row) {

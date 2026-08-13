@@ -5,7 +5,8 @@
         <id property="stockId" column="stock_id"/><result property="warehouseId" column="warehouse_id"/>
         <result property="warehouseCode" column="warehouse_code"/><result property="warehouseName" column="warehouse_name"/>
         <result property="locationId" column="location_id"/><result property="locationCode" column="location_code"/>
-        <result property="locationName" column="location_name"/><result property="itemId" column="item_id"/>
+        <result property="locationName" column="location_name"/><result property="locationType" column="location_type"/>
+        <result property="areaType" column="area_type"/><result property="itemId" column="item_id"/>
         <result property="itemCode" column="item_code"/><result property="itemName" column="item_name"/>
         <result property="specification" column="specification"/><result property="unit" column="unit"/>
         <result property="batchNo" column="batch_no"/><result property="productionDate" column="production_date"/>
@@ -25,15 +26,20 @@
         <result property="batchNo" column="batch_no"/><result property="changeQty" column="change_qty"/>
         <result property="balanceQty" column="balance_qty"/><result property="operator" column="operator"/>
         <result property="operationTime" column="operation_time"/><result property="remark" column="remark"/>
+        <result property="exportRemark" column="remark"/>
     </resultMap>
-    <sql id="stockSelect">select s.stock_id,s.warehouse_id,w.warehouse_code,w.warehouse_name,s.location_id,l.location_code,l.location_name,
+    <sql id="stockSelect">select s.stock_id,s.warehouse_id,w.warehouse_code,w.warehouse_name,s.location_id,l.location_code,l.location_name,l.location_type,a.area_type,
         s.item_id,i.item_code,i.item_name,i.specification,i.unit,s.batch_no,s.production_date,s.expiry_date,s.quantity,s.locked_quantity,
         (s.quantity-s.locked_quantity) available_qty,i.min_stock,
-        case when i.status='0' and i.min_stock&gt;0 and (select coalesce(sum(sa.quantity-sa.locked_quantity),0) from wms_stock sa
-            where sa.item_id=s.item_id <if test="warehouseId != null">and sa.warehouse_id=#{warehouseId}</if>)&lt;=i.min_stock then true else false end low_stock,
+        case when i.status='0' and i.min_stock&gt;0 and (select coalesce(sum(sa.quantity-sa.locked_quantity),0)
+            from wms_stock sa join wms_location sla on sla.location_id=sa.location_id
+            join wms_area saa on saa.area_id=sla.area_id join wms_warehouse swa on swa.warehouse_id=sa.warehouse_id
+            where sa.item_id=s.item_id and sa.warehouse_id=s.warehouse_id and sla.status='0'
+              and sla.location_type!='DEFECTIVE' and saa.status='0' and saa.area_type in ('STORAGE','PICKING')
+              and swa.status='0')&lt;=i.min_stock then true else false end low_stock,
         s.update_time from wms_stock s
         left join wms_warehouse w on w.warehouse_id=s.warehouse_id left join wms_location l on l.location_id=s.location_id
-        left join wms_item i on i.item_id=s.item_id</sql>
+        left join wms_area a on a.area_id=l.area_id left join wms_item i on i.item_id=s.item_id</sql>
     <select id="selectStockList" parameterType="WmsStock" resultMap="StockResult"><include refid="stockSelect"/><where>
         <if test="warehouseId != null">and s.warehouse_id=#{warehouseId}</if><if test="locationId != null">and s.location_id=#{locationId}</if>
         <if test="itemId != null">and s.item_id=#{itemId}</if><if test="warehouseCode != null and warehouseCode != ''">and w.warehouse_code like concat('%',#{warehouseCode},'%')</if>
@@ -43,37 +49,24 @@
         <if test="batchNo != null and batchNo != ''">and s.batch_no like concat('%',#{batchNo},'%')</if>
         </where> order by w.warehouse_code,l.location_code,i.item_code,s.batch_no</select>
     <select id="selectLowStockList" parameterType="WmsStock" resultMap="StockResult">
-        <choose>
-            <when test="warehouseId != null">
-                select null stock_id,w.warehouse_id,w.warehouse_code,w.warehouse_name,null location_id,null location_code,null location_name,
-                i.item_id,i.item_code,i.item_name,i.specification,i.unit,null batch_no,null production_date,null expiry_date,
-                coalesce(sum(s.quantity),0) quantity,coalesce(sum(s.locked_quantity),0) locked_quantity,
-                coalesce(sum(s.quantity-s.locked_quantity),0) available_qty,i.min_stock,true low_stock,max(s.update_time) update_time
-                from wms_item i join wms_warehouse w on w.warehouse_id=#{warehouseId}
-                left join wms_stock s on s.item_id=i.item_id and s.warehouse_id=w.warehouse_id
-                where i.status='0' and i.min_stock&gt;0
-                <if test="itemId != null">and i.item_id=#{itemId}</if>
-                <if test="itemCode != null and itemCode != ''">and i.item_code like concat('%',#{itemCode},'%')</if>
-                <if test="itemName != null and itemName != ''">and i.item_name like concat('%',#{itemName},'%')</if>
-                group by w.warehouse_id,w.warehouse_code,w.warehouse_name,i.item_id,i.item_code,i.item_name,i.specification,i.unit,i.min_stock
-                having coalesce(sum(s.quantity-s.locked_quantity),0)&lt;=i.min_stock
-                order by available_qty/i.min_stock,i.item_code
-            </when>
-            <otherwise>
-                select null stock_id,null warehouse_id,null warehouse_code,null warehouse_name,null location_id,null location_code,null location_name,
-                i.item_id,i.item_code,i.item_name,i.specification,i.unit,null batch_no,null production_date,null expiry_date,
-                coalesce(sum(s.quantity),0) quantity,coalesce(sum(s.locked_quantity),0) locked_quantity,
-                coalesce(sum(s.quantity-s.locked_quantity),0) available_qty,i.min_stock,true low_stock,max(s.update_time) update_time
-                from wms_item i left join wms_stock s on s.item_id=i.item_id
-                where i.status='0' and i.min_stock&gt;0
-                <if test="itemId != null">and i.item_id=#{itemId}</if>
-                <if test="itemCode != null and itemCode != ''">and i.item_code like concat('%',#{itemCode},'%')</if>
-                <if test="itemName != null and itemName != ''">and i.item_name like concat('%',#{itemName},'%')</if>
-                group by i.item_id,i.item_code,i.item_name,i.specification,i.unit,i.min_stock
-                having coalesce(sum(s.quantity-s.locked_quantity),0)&lt;=i.min_stock
-                order by available_qty/i.min_stock,i.item_code
-            </otherwise>
-        </choose>
+        select null stock_id,w.warehouse_id,w.warehouse_code,w.warehouse_name,null location_id,null location_code,null location_name,
+        i.item_id,i.item_code,i.item_name,i.specification,i.unit,null batch_no,null production_date,null expiry_date,
+        coalesce(sum(s.quantity),0) quantity,coalesce(sum(s.locked_quantity),0) locked_quantity,
+        coalesce(sum(s.quantity-s.locked_quantity),0) available_qty,i.min_stock,true low_stock,max(s.update_time) update_time
+        from wms_stock s join wms_warehouse w on w.warehouse_id=s.warehouse_id
+        join wms_item i on i.item_id=s.item_id
+        join wms_location al on al.location_id=s.location_id
+        join wms_area aa on aa.area_id=al.area_id
+        where w.status='0' and i.status='0' and i.min_stock&gt;0
+          and al.status='0' and al.location_type!='DEFECTIVE'
+          and aa.status='0' and aa.area_type in ('STORAGE','PICKING')
+        <if test="warehouseId != null">and w.warehouse_id=#{warehouseId}</if>
+        <if test="itemId != null">and i.item_id=#{itemId}</if>
+        <if test="itemCode != null and itemCode != ''">and i.item_code like concat('%',#{itemCode},'%')</if>
+        <if test="itemName != null and itemName != ''">and i.item_name like concat('%',#{itemName},'%')</if>
+        group by w.warehouse_id,w.warehouse_code,w.warehouse_name,i.item_id,i.item_code,i.item_name,i.specification,i.unit,i.min_stock
+        having coalesce(sum(s.quantity-s.locked_quantity),0)&lt;=i.min_stock
+        order by w.warehouse_code,available_qty/i.min_stock,i.item_code
     </select>
     <select id="selectMovementList" parameterType="WmsStockMovement" resultMap="MovementResult">
         select m.movement_id,m.biz_type,m.biz_no,m.warehouse_id,w.warehouse_code,w.warehouse_name,m.location_id,l.location_code,l.location_name,
@@ -92,8 +85,26 @@
         <if test="params.endTime != null and params.endTime != ''">and m.operation_time &lt; date_add(#{params.endTime}, interval 1 day)</if></where>
         order by m.operation_time desc,m.movement_id desc
     </select>
+    <sql id="stockBalanceSelect">
+        select s.stock_id,s.warehouse_id,s.location_id,s.item_id,s.batch_no,s.production_date,s.expiry_date,
+        s.quantity,s.locked_quantity,(s.quantity-s.locked_quantity) available_qty,s.update_time
+        from wms_stock s
+    </sql>
+    <select id="selectStockById" resultMap="StockResult">
+        <include refid="stockBalanceSelect"/> where s.stock_id=#{stockId}
+    </select>
+    <select id="selectStockByIdForUpdate" resultMap="StockResult">
+        <include refid="stockBalanceSelect"/> where s.stock_id=#{stockId} for update
+    </select>
     <select id="selectStockByKey" resultMap="StockResult"><include refid="stockSelect"/> where s.warehouse_id=#{warehouseId}
         and s.location_id=#{locationId} and s.item_id=#{itemId} and s.batch_no=#{batchNo}</select>
+    <select id="selectStockByKeyForUpdate" resultMap="StockResult">
+        <include refid="stockBalanceSelect"/> where s.warehouse_id=#{warehouseId}
+        and s.location_id=#{locationId} and s.item_id=#{itemId} and s.batch_no=#{batchNo} for update
+    </select>
+    <select id="selectTotalQuantityByLocation" resultType="java.math.BigDecimal">
+        select coalesce(sum(quantity),0) from wms_stock where location_id=#{locationId}
+    </select>
     <insert id="upsertStock" parameterType="WmsStock">
         insert into wms_stock (warehouse_id,location_id,item_id,batch_no,production_date,expiry_date,quantity,locked_quantity,update_time)
         values (#{warehouseId},#{locationId},#{itemId},#{batchNo},#{productionDate},#{expiryDate},#{quantity},0,sysdate())
@@ -103,6 +114,14 @@
     <update id="decreaseStock">update wms_stock set quantity=quantity-#{quantity},update_time=sysdate()
         where warehouse_id=#{warehouseId} and location_id=#{locationId} and item_id=#{itemId} and batch_no=#{batchNo}
         and quantity-locked_quantity &gt;= #{quantity}</update>
+    <update id="decreaseStockById">
+        update wms_stock set quantity=quantity-#{quantity},update_time=sysdate()
+        where stock_id=#{stockId} and #{quantity}&gt;0 and quantity-locked_quantity&gt;=#{quantity}
+    </update>
+    <update id="updateStockQuantity">
+        update wms_stock set quantity=#{quantity},update_time=sysdate()
+        where stock_id=#{stockId} and #{quantity}&gt;=locked_quantity
+    </update>
     <insert id="insertMovement" parameterType="WmsStockMovement" useGeneratedKeys="true" keyProperty="movementId">
         insert into wms_stock_movement (biz_type,biz_no,warehouse_id,location_id,item_id,batch_no,change_qty,balance_qty,operator,operation_time,remark)
         values (#{bizType},#{bizNo},#{warehouseId},#{locationId},#{itemId},#{batchNo},#{changeQty},#{balanceQty},#{operator},sysdate(),#{remark})

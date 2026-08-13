@@ -21,6 +21,9 @@ services:
       - ../sql/yian_wms_20260320.sql:/docker-entrypoint-initdb.d/01-yian-wms.sql:ro
       - ../sql/quartz.sql:/docker-entrypoint-initdb.d/02-quartz.sql:ro
       - ../sql/wms.sql:/docker-entrypoint-initdb.d/03-wms.sql:ro
+      - ../sql/migrations/V1.1.0__wms_core_extensions.sql:/docker-entrypoint-initdb.d/04-wms-core-extensions.sql:ro
+      - ../sql/demo/wms_demo_seed.sql:/docker-entrypoint-initdb.d/05-wms-demo-seed.sql:ro
+      - ../sql/demo/wms_demo_refresh.sql:/docker-entrypoint-initdb.d/06-wms-demo-refresh.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
       interval: 10s

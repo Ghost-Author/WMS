@@ -12,4 +12,6 @@ public class WmsDashboardController extends BaseController
     private final IWmsDashboardService service;public WmsDashboardController(IWmsDashboardService service){this.service=service;}
     @PreAuthorize("@ss.hasPermi('wms:dashboard:list')") @GetMapping("/summary") public AjaxResult summary(){return success(service.selectSummary());}
     @PreAuthorize("@ss.hasPermi('wms:dashboard:list')") @GetMapping("/recentMovements") public AjaxResult recent(){return success(service.selectRecentMovements());}
+    @PreAuthorize("@ss.hasPermi('wms:dashboard:list')") @GetMapping("/operationTrend") public AjaxResult operationTrend(){return success(service.selectOperationTrend());}
+    @PreAuthorize("@ss.hasPermi('wms:dashboard:list')") @GetMapping("/warehouseStockDistribution") public AjaxResult warehouseStockDistribution(){return success(service.selectWarehouseStockDistribution());}
 }

@@ -23,3 +23,7 @@ export function delReceipt(receiptIds) {
 export function completeReceipt(receiptId) {
   return request({ url: `/wms/receipt/${receiptId}/complete`, method: 'put' })
 }
+
+export function cancelReceipt(receiptId) {
+  return request({ url: `/wms/receipt/${receiptId}/cancel`, method: 'put' })
+}

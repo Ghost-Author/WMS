@@ -18,6 +18,7 @@ public class WmsLocation extends BaseEntity
     @Excel(name = "仓库名称") private String warehouseName;
     @Excel(name = "库区ID") private Long areaId;
     @Excel(name = "库区名称") private String areaName;
+    @Excel(name = "库区类型") private String areaType;
     @Excel(name = "库位编码") private String locationCode;
     @Excel(name = "库位名称") private String locationName;
     @Excel(name = "库位类型") private String locationType;
@@ -34,6 +35,8 @@ public class WmsLocation extends BaseEntity
     public void setAreaId(Long areaId) { this.areaId = areaId; }
     public String getAreaName() { return areaName; }
     public void setAreaName(String areaName) { this.areaName = areaName; }
+    public String getAreaType() { return areaType; }
+    public void setAreaType(String areaType) { this.areaType = areaType; }
     @NotBlank(message = "库位编码不能为空") @Size(max = 32) public String getLocationCode() { return locationCode; }
     public void setLocationCode(String locationCode) { this.locationCode = locationCode; }
     @NotBlank(message = "库位名称不能为空") @Size(max = 100) public String getLocationName() { return locationName; }

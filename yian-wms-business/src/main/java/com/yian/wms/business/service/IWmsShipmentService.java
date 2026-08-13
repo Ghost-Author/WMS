@@ -11,4 +11,5 @@ public interface IWmsShipmentService
     int updateShipment(WmsShipment shipment);
     void deleteShipmentByIds(Long[] ids);
     void completeShipment(Long id, String operator);
+    void cancelShipment(Long id, String operator);
 }

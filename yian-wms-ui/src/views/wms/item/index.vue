@@ -20,6 +20,7 @@
         <el-col :span="1.5"><el-button type="primary" plain icon="Plus" @click="handleAdd" v-hasPermi="['wms:item:add']">新增</el-button></el-col>
         <el-col :span="1.5"><el-button type="success" plain icon="Edit" :disabled="single" @click="handleUpdate()" v-hasPermi="['wms:item:edit']">修改</el-button></el-col>
         <el-col :span="1.5"><el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete()" v-hasPermi="['wms:item:remove']">删除</el-button></el-col>
+        <el-col :span="1.5"><el-button type="warning" plain icon="Download" @click="handleExport" v-hasPermi="['wms:item:export']">导出</el-button></el-col>
         <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
       </el-row>
       <el-table v-loading="loading" :data="itemList" @selection-change="handleSelectionChange">
@@ -46,7 +47,7 @@
           <el-col :xs="24" :sm="12"><el-form-item label="物料分类" prop="category"><el-input v-model="form.category" placeholder="例如 原材料" maxlength="50" /></el-form-item></el-col>
           <el-col :xs="24" :sm="12"><el-form-item label="规格型号" prop="specification"><el-input v-model="form.specification" placeholder="请输入规格型号" maxlength="100" /></el-form-item></el-col>
           <el-col :xs="24" :sm="12"><el-form-item label="计量单位" prop="unit"><el-input v-model="form.unit" placeholder="例如 件、箱、kg" maxlength="20" /></el-form-item></el-col>
-          <el-col :xs="24" :sm="12"><el-form-item label="条码" prop="barcode"><el-input v-model="form.barcode" placeholder="请输入商品条码" maxlength="100" /></el-form-item></el-col>
+          <el-col :xs="24" :sm="12"><el-form-item label="条码" prop="barcode"><el-input v-model="form.barcode" placeholder="请输入商品条码" maxlength="64" show-word-limit /></el-form-item></el-col>
           <el-col :xs="24" :sm="12"><el-form-item label="最低库存" prop="minStock"><el-input-number v-model="form.minStock" :min="0" :precision="4" controls-position="right" style="width: 100%" /></el-form-item></el-col>
           <el-col :xs="24" :sm="12"><el-form-item label="最高库存" prop="maxStock"><el-input-number v-model="form.maxStock" :min="0" :precision="4" controls-position="right" style="width: 100%" /></el-form-item></el-col>
           <el-col :span="24"><el-form-item label="状态" prop="status"><el-radio-group v-model="form.status"><el-radio v-for="item in normalStatusOptions" :key="item.value" :value="item.value">{{ item.label }}</el-radio></el-radio-group></el-form-item></el-col>
@@ -94,6 +95,7 @@ function reset() { form.value = { itemId: undefined, itemCode: '', itemName: '',
 async function getList() { loading.value = true; try { const response = await listItem(queryParams.value); itemList.value = rowsOf(response); total.value = totalOf(response, itemList.value) } finally { loading.value = false } }
 function handleQuery() { queryParams.value.pageNum = 1; getList() }
 function resetQuery() { proxy.resetForm('queryRef'); handleQuery() }
+function handleExport() { proxy.download('wms/item/export', queryParams.value, `物料数据_${Date.now()}.xlsx`) }
 function handleSelectionChange(selection) { ids.value = selection.map(item => item.itemId) }
 function handleAdd() { reset(); title.value = '新增物料'; open.value = true }
 async function handleUpdate(row) { reset(); const response = await getItem(row?.itemId ?? ids.value[0]); form.value = dataOf(response); title.value = '修改物料'; open.value = true }

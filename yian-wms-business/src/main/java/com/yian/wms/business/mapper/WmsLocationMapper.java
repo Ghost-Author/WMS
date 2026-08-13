@@ -7,6 +7,7 @@ import com.yian.wms.business.domain.WmsLocation;
 public interface WmsLocationMapper
 {
     WmsLocation selectLocationById(Long locationId);
+    WmsLocation selectLocationByIdForUpdate(Long locationId);
     List<WmsLocation> selectLocationList(WmsLocation location);
     List<WmsLocation> selectEnabledOptions(Long warehouseId);
     int insertLocation(WmsLocation location);

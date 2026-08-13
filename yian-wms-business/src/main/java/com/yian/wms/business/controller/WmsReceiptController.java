@@ -24,5 +24,6 @@ public class WmsReceiptController extends BaseController
     @PreAuthorize("@ss.hasPermi('wms:receipt:edit')") @Log(title="入库单",businessType=BusinessType.UPDATE) @PutMapping public AjaxResult edit(@Validated @RequestBody WmsReceipt v){v.setUpdateBy(getUsername());return toAjax(service.updateReceipt(v));}
     @PreAuthorize("@ss.hasPermi('wms:receipt:remove')") @Log(title="入库单",businessType=BusinessType.DELETE) @DeleteMapping("/{ids}") public AjaxResult remove(@PathVariable Long[] ids){service.deleteReceiptByIds(ids);return success();}
     @PreAuthorize("@ss.hasPermi('wms:receipt:complete')") @Log(title="入库单完成",businessType=BusinessType.UPDATE) @PutMapping("/{id}/complete") public AjaxResult complete(@PathVariable Long id){service.completeReceipt(id,getUsername());return success();}
+    @PreAuthorize("@ss.hasPermi('wms:receipt:cancel')") @Log(title="入库单取消",businessType=BusinessType.UPDATE) @PutMapping("/{id}/cancel") public AjaxResult cancel(@PathVariable Long id){service.cancelReceipt(id,getUsername());return success();}
     @PreAuthorize("@ss.hasPermi('wms:receipt:export')") @Log(title="入库单",businessType=BusinessType.EXPORT) @PostMapping("/export") public void export(HttpServletResponse r,WmsReceipt q){List<WmsReceipt> l=service.selectReceiptList(q);new ExcelUtil<WmsReceipt>(WmsReceipt.class).exportExcel(r,l,"入库单数据");}
 }

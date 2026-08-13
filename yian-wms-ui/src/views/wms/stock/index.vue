@@ -17,7 +17,7 @@
           </el-form>
           <div class="stock-toolbar">
             <div class="low-stock-switch"><el-switch v-model="onlyLowStock" inline-prompt active-text="预警" inactive-text="全部" @change="handleLowStockChange" /><span>仅显示低库存物料</span></div>
-            <el-button icon="Refresh" circle @click="getStockList" title="刷新库存" />
+            <div><el-button type="warning" plain icon="Download" @click="exportStock" v-hasPermi="['wms:stock:export']">导出库存</el-button><el-button icon="Refresh" circle @click="getStockList" title="刷新库存" /></div>
           </div>
           <el-table v-loading="stockLoading" :data="stockList" stripe>
             <el-table-column label="仓库" prop="warehouseName" min-width="130" show-overflow-tooltip />
@@ -29,7 +29,7 @@
             <el-table-column label="可用数量" prop="availableQty" width="105" align="right"><template #default="scope"><span :class="{ danger: Number(availableQty(scope.row)) <= 0 }">{{ quantity(availableQty(scope.row)) }}</span></template></el-table-column>
             <el-table-column label="生产日期" prop="productionDate" width="115"><template #default="scope">{{ parseDate(scope.row.productionDate) }}</template></el-table-column>
             <el-table-column label="有效期至" prop="expiryDate" width="115"><template #default="scope"><span :class="expiryClass(scope.row.expiryDate)">{{ parseDate(scope.row.expiryDate) }}</span></template></el-table-column>
-            <el-table-column v-if="!onlyLowStock" label="操作" width="90" fixed="right" align="center"><template #default="scope"><el-button link type="primary" icon="List" @click="openMovements(scope.row)" v-hasPermi="['wms:stock:list']">流水</el-button></template></el-table-column>
+            <el-table-column v-if="!onlyLowStock" label="操作" width="210" fixed="right" align="center"><template #default="scope"><el-button link type="primary" icon="List" @click="openMovements(scope.row)" v-hasPermi="['wms:stock:list']">流水</el-button><el-button link type="success" icon="Switch" :disabled="Number(availableQty(scope.row)) <= 0 || scope.row.locationType === 'DEFECTIVE'" @click="openTransfer(scope.row)" v-hasPermi="['wms:stock:transfer']">调拨</el-button><el-button link type="warning" icon="EditPen" @click="openAdjustment(scope.row)" v-hasPermi="['wms:stock:adjust']">盘点</el-button></template></el-table-column>
           </el-table>
           <pagination v-show="stockTotal > 0" :total="stockTotal" v-model:page="stockQuery.pageNum" v-model:limit="stockQuery.pageSize" @pagination="getStockList" />
         </el-tab-pane>
@@ -40,7 +40,7 @@
             <el-form-item label="业务单号" prop="bizNo"><el-input v-model="movementQuery.bizNo" placeholder="请输入业务单号" clearable @keyup.enter="queryMovements" /></el-form-item>
             <el-form-item label="物料" prop="itemId"><el-select v-model="movementQuery.itemId" placeholder="全部物料" clearable filterable style="width: 220px"><el-option v-for="item in items" :key="item.itemId" :label="optionText(item, 'itemCode', 'itemName')" :value="item.itemId" /></el-select></el-form-item>
             <el-form-item label="操作时间"><el-date-picker v-model="movementDateRange" value-format="YYYY-MM-DD" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" style="width: 260px" /></el-form-item>
-            <el-form-item><el-button type="primary" icon="Search" @click="queryMovements">查询</el-button><el-button icon="Refresh" @click="resetMovementQuery">重置</el-button></el-form-item>
+            <el-form-item><el-button type="primary" icon="Search" @click="queryMovements">查询</el-button><el-button icon="Refresh" @click="resetMovementQuery">重置</el-button><el-button type="warning" plain icon="Download" @click="exportMovements" v-hasPermi="['wms:stock:export']">导出流水</el-button></el-form-item>
           </el-form>
           <div v-loading="movementLoading"><movement-table :rows="movementList" /></div>
           <pagination v-show="movementTotal > 0" :total="movementTotal" v-model:page="movementQuery.pageNum" v-model:limit="movementQuery.pageSize" @pagination="getMovementList" />
@@ -58,6 +58,40 @@
       <div v-loading="drawerLoading"><movement-table :rows="drawerMovements" /></div>
       <pagination v-show="drawerTotal > 0" :total="drawerTotal" v-model:page="drawerQuery.pageNum" v-model:limit="drawerQuery.pageSize" @pagination="getDrawerMovements" />
     </el-drawer>
+
+    <el-dialog v-model="transferOpen" title="库存调拨" width="620px" append-to-body destroy-on-close :close-on-click-modal="false">
+      <el-alert title="调拨完成后将同步扣减来源库存、增加目标库存，并生成两条可追溯流水。" type="info" :closable="false" show-icon class="operation-alert" />
+      <el-descriptions v-if="operationStock" :column="2" border class="operation-summary">
+        <el-descriptions-item label="物料">{{ operationStock.itemCode }} - {{ operationStock.itemName }}</el-descriptions-item>
+        <el-descriptions-item label="批次">{{ operationStock.batchNo || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="来源仓库">{{ operationStock.warehouseName }}</el-descriptions-item>
+        <el-descriptions-item label="来源库位">{{ operationStock.locationCode }}</el-descriptions-item>
+        <el-descriptions-item label="可用数量">{{ quantity(availableQty(operationStock)) }} {{ operationStock.unit || '' }}</el-descriptions-item>
+      </el-descriptions>
+      <el-form ref="transferRef" :model="transferForm" :rules="transferRules" label-width="96px">
+        <el-form-item label="目标库位" prop="targetLocationId"><el-select v-model="transferForm.targetLocationId" filterable placeholder="请选择目标库位" style="width: 100%"><el-option v-for="item in transferLocationOptions" :key="item.locationId" :label="`${item.warehouseName} / ${item.locationCode} - ${item.locationName}`" :value="item.locationId" /></el-select></el-form-item>
+        <el-form-item label="调拨数量" prop="quantity"><el-input-number v-model="transferForm.quantity" :min="0.0001" :max="Number(availableQty(operationStock || {}))" :precision="4" controls-position="right" style="width: 100%" /></el-form-item>
+        <el-form-item label="调拨原因" prop="remark"><el-input v-model="transferForm.remark" type="textarea" :rows="3" maxlength="200" show-word-limit placeholder="请输入调拨原因" /></el-form-item>
+      </el-form>
+      <template #footer><el-button @click="transferOpen = false">取消</el-button><el-button type="primary" :loading="operationSubmitting" @click="submitTransfer">确认调拨</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="adjustOpen" title="库存盘点" width="600px" append-to-body destroy-on-close :close-on-click-modal="false">
+      <el-alert title="请输入实际盘点数量，系统将自动计算盘盈或盘亏并记录库存流水。" type="warning" :closable="false" show-icon class="operation-alert" />
+      <el-descriptions v-if="operationStock" :column="2" border class="operation-summary">
+        <el-descriptions-item label="物料">{{ operationStock.itemCode }} - {{ operationStock.itemName }}</el-descriptions-item>
+        <el-descriptions-item label="批次">{{ operationStock.batchNo || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="仓库 / 库位">{{ operationStock.warehouseName }} / {{ operationStock.locationCode }}</el-descriptions-item>
+        <el-descriptions-item label="账面数量">{{ quantity(stockQty(operationStock)) }} {{ operationStock.unit || '' }}</el-descriptions-item>
+        <el-descriptions-item label="锁定数量">{{ quantity(lockedQty(operationStock)) }}</el-descriptions-item>
+        <el-descriptions-item label="盘点差异"><strong :class="adjustDifference >= 0 ? 'increase' : 'decrease'">{{ adjustDifference > 0 ? '+' : '' }}{{ quantity(adjustDifference) }}</strong></el-descriptions-item>
+      </el-descriptions>
+      <el-form ref="adjustRef" :model="adjustForm" :rules="adjustRules" label-width="96px">
+        <el-form-item label="实盘数量" prop="countedQuantity"><el-input-number v-model="adjustForm.countedQuantity" :min="Number(lockedQty(operationStock || {}))" :precision="4" controls-position="right" style="width: 100%" /></el-form-item>
+        <el-form-item label="盘点说明" prop="remark"><el-input v-model="adjustForm.remark" type="textarea" :rows="3" maxlength="200" show-word-limit placeholder="请输入盘点差异原因" /></el-form-item>
+      </el-form>
+      <template #footer><el-button @click="adjustOpen = false">取消</el-button><el-button type="primary" :loading="operationSubmitting" @click="submitAdjustment">确认调整</el-button></template>
+    </el-dialog>
   </div>
 </template>
 
@@ -66,7 +100,7 @@ import { defineComponent, h } from 'vue'
 import { ElTable, ElTableColumn, ElTag } from 'element-plus'
 import { getItemOptions } from '@/api/wms/item'
 import { getLocationOptions } from '@/api/wms/location'
-import { listLowStock, listStock, listStockMovements } from '@/api/wms/stock'
+import { adjustStock, listLowStock, listStock, listStockMovements, transferStock } from '@/api/wms/stock'
 import { getWarehouseOptions } from '@/api/wms/warehouse'
 import { optionText, quantity, rowsOf, totalOf } from '@/views/wms/utils'
 
@@ -74,7 +108,8 @@ const { proxy } = getCurrentInstance()
 const route = useRoute()
 const movementTypes = [
   { value: 'INITIAL', label: '期初' }, { value: 'RECEIPT', label: '入库' }, { value: 'SHIPMENT', label: '出库' },
-  { value: 'ADJUST_IN', label: '盘盈' }, { value: 'ADJUST_OUT', label: '盘亏' }
+  { value: 'ADJUST_IN', label: '盘盈' }, { value: 'ADJUST_OUT', label: '盘亏' },
+  { value: 'TRANSFER_IN', label: '调拨入' }, { value: 'TRANSFER_OUT', label: '调拨出' }
 ]
 const movementTypeLabel = value => movementTypes.find(item => item.value === value)?.label || value || '-'
 const MovementTable = defineComponent({
@@ -94,7 +129,8 @@ const MovementTable = defineComponent({
         h(ElTableColumn, { label: '变动数量', width: 105, align: 'right' }, { default: ({ row }) => h('span', { class: Number(row.changeQty) >= 0 ? 'increase' : 'decrease' }, `${Number(row.changeQty) > 0 ? '+' : ''}${quantity(row.changeQty)}`) }),
         h(ElTableColumn, { label: '结存数量', width: 105, align: 'right' }, { default: ({ row }) => quantity(row.balanceQty) }),
         column('操作人', 'operator', 105),
-        h(ElTableColumn, { label: '操作时间', width: 170 }, { default: ({ row }) => proxy.parseTime(row.operationTime) || '-' })
+        h(ElTableColumn, { label: '操作时间', width: 170 }, { default: ({ row }) => proxy.parseTime(row.operationTime) || '-' }),
+        column('备注 / 原因', 'remark', undefined, { minWidth: 220, showOverflowTooltip: true })
       ]
     })
   }
@@ -117,7 +153,25 @@ const drawerTotal = ref(0)
 const movementDateRange = ref([])
 const drawerOpen = ref(false)
 const drawerStock = ref(null)
-const stockQuery = reactive({ pageNum: 1, pageSize: 10, warehouseId: undefined, locationId: undefined, itemId: route.query.itemId || undefined, batchNo: undefined })
+const transferOpen = ref(false)
+const adjustOpen = ref(false)
+const operationStock = ref(null)
+const operationSubmitting = ref(false)
+const allLocations = ref([])
+const transferForm = reactive({ stockId: undefined, targetLocationId: undefined, quantity: 1, remark: '' })
+const adjustForm = reactive({ stockId: undefined, countedQuantity: 0, remark: '' })
+const transferRules = {
+  targetLocationId: [{ required: true, message: '请选择目标库位', trigger: 'change' }],
+  quantity: [{ required: true, message: '请输入调拨数量', trigger: 'change' }],
+  remark: [{ required: true, message: '请输入调拨原因', trigger: 'blur' }]
+}
+const adjustRules = {
+  countedQuantity: [{ required: true, message: '请输入实盘数量', trigger: 'change' }],
+  remark: [{ required: true, message: '请输入盘点说明', trigger: 'blur' }]
+}
+const transferLocationOptions = computed(() => allLocations.value.filter(item => String(item.locationId) !== String(operationStock.value?.locationId) && item.locationType !== 'DEFECTIVE'))
+const adjustDifference = computed(() => Number(adjustForm.countedQuantity || 0) - Number(stockQty(operationStock.value || {})))
+const stockQuery = reactive({ pageNum: 1, pageSize: 10, warehouseId: routePositiveId(route.query.warehouseId), locationId: undefined, itemId: routePositiveId(route.query.itemId), batchNo: undefined })
 const movementQuery = reactive({ pageNum: 1, pageSize: 10, bizType: undefined, bizNo: undefined, itemId: undefined })
 const drawerQuery = reactive({ pageNum: 1, pageSize: 10, itemId: undefined, locationId: undefined, batchNo: undefined, exactBatch: true })
 
@@ -127,28 +181,38 @@ function availableQty(row) { return row.availableQty ?? (Number(stockQty(row)) -
 function isLow(row) { return row.lowStock === true || row.isLowStock === true || (row.minStock != null && Number(availableQty(row)) <= Number(row.minStock)) }
 function parseDate(value) { return value ? String(value).slice(0, 10) : '-' }
 function expiryClass(value) { if (!value) return ''; const days = (new Date(value).getTime() - Date.now()) / 86400000; return days < 0 ? 'expired' : days <= 30 ? 'expiring' : '' }
-async function loadOptions() { const [warehouseRes, itemRes] = await Promise.all([getWarehouseOptions({ status: '0' }), getItemOptions({ status: '0' })]); warehouses.value = rowsOf(warehouseRes); items.value = rowsOf(itemRes) }
+async function loadOptions() { const [warehouseRes, itemRes, locationRes] = await Promise.all([getWarehouseOptions({ status: '0' }), getItemOptions({ status: '0' }), getLocationOptions({ status: '0' })]); warehouses.value = rowsOf(warehouseRes); items.value = rowsOf(itemRes); allLocations.value = rowsOf(locationRes); syncLocationOptions() }
 async function loadLocations(warehouseId) { stockQuery.locationId = undefined; locations.value = rowsOf(await getLocationOptions({ warehouseId, status: '0' })) }
 async function getStockList() { stockLoading.value = true; try { const response = await (onlyLowStock.value ? listLowStock(stockQuery) : listStock(stockQuery)); stockList.value = rowsOf(response); stockTotal.value = totalOf(response, stockList.value) } finally { stockLoading.value = false } }
 function queryStock() { stockQuery.pageNum = 1; getStockList() }
 function handleLowStockChange(enabled) { if (enabled) { stockQuery.locationId = undefined; stockQuery.batchNo = undefined } queryStock() }
 function resetStockQuery() { proxy.resetForm('stockQueryRef'); locations.value = []; onlyLowStock.value = false; queryStock() }
+function exportStock() { proxy.download(onlyLowStock.value ? 'wms/stock/lowStock/export' : 'wms/stock/export', { ...stockQuery }, `${onlyLowStock.value ? '低库存预警' : '库存数据'}_${Date.now()}.xlsx`) }
 function movementParams(query) { return proxy.addDateRange({ ...query }, movementDateRange.value) }
 async function getMovementList() { movementLoading.value = true; try { const response = await listStockMovements(movementParams(movementQuery)); movementList.value = rowsOf(response); movementTotal.value = totalOf(response, movementList.value) } finally { movementLoading.value = false } }
 function queryMovements() { movementQuery.pageNum = 1; getMovementList() }
 function resetMovementQuery() { proxy.resetForm('movementQueryRef'); movementDateRange.value = []; queryMovements() }
+function exportMovements() { proxy.download('wms/stock/movement/export', movementParams(movementQuery), `库存流水_${Date.now()}.xlsx`) }
 function handleTabChange(name) { if (name === 'movement' && !movementList.value.length) getMovementList() }
 async function openMovements(row) { drawerStock.value = row; Object.assign(drawerQuery, { pageNum: 1, itemId: row.itemId, locationId: row.locationId, batchNo: row.batchNo ?? '', exactBatch: true }); drawerOpen.value = true; getDrawerMovements() }
 async function getDrawerMovements() { drawerLoading.value = true; try { const response = await listStockMovements(drawerQuery); drawerMovements.value = rowsOf(response); drawerTotal.value = totalOf(response, drawerMovements.value) } finally { drawerLoading.value = false } }
+function openTransfer(row) { const available = Number(availableQty(row)); if (available <= 0) return proxy.$modal.msgWarning('当前库存没有可调拨数量'); operationStock.value = row; Object.assign(transferForm, { stockId: row.stockId, targetLocationId: undefined, quantity: Math.min(1, available), remark: '' }); transferOpen.value = true }
+async function submitTransfer() { const valid = await proxy.$refs.transferRef.validate().catch(() => false); if (!valid) return; operationSubmitting.value = true; try { await transferStock({ ...transferForm }); proxy.$modal.msgSuccess('库存调拨成功'); transferOpen.value = false; await refreshAfterOperation() } finally { operationSubmitting.value = false } }
+function openAdjustment(row) { operationStock.value = row; Object.assign(adjustForm, { stockId: row.stockId, countedQuantity: Number(stockQty(row)), remark: '' }); adjustOpen.value = true }
+async function submitAdjustment() { const valid = await proxy.$refs.adjustRef.validate().catch(() => false); if (!valid) return; if (adjustDifference.value === 0) return proxy.$modal.msgWarning('实盘数量与账面数量一致，无需调整'); operationSubmitting.value = true; try { await adjustStock({ ...adjustForm }); proxy.$modal.msgSuccess(adjustDifference.value > 0 ? '盘盈入账成功' : '盘亏出账成功'); adjustOpen.value = false; await refreshAfterOperation() } finally { operationSubmitting.value = false } }
+async function refreshAfterOperation() { await getStockList(); if (movementList.value.length) await getMovementList() }
 
-function routeItemId(value) { const id = Number(value); return value !== undefined && value !== '' && Number.isFinite(id) ? id : undefined }
+function routePositiveId(value) { const id = Number(value); return value !== undefined && value !== '' && Number.isFinite(id) && id > 0 ? id : undefined }
+function syncLocationOptions() { locations.value = stockQuery.warehouseId ? allLocations.value.filter(item => String(item.warehouseId) === String(stockQuery.warehouseId)) : [] }
 function syncRouteQuery() {
   onlyLowStock.value = route.query.lowStock === '1'
-  stockQuery.itemId = routeItemId(route.query.itemId)
+  stockQuery.warehouseId = routePositiveId(route.query.warehouseId)
+  stockQuery.itemId = routePositiveId(route.query.itemId)
+  syncLocationOptions()
   if (onlyLowStock.value) { stockQuery.locationId = undefined; stockQuery.batchNo = undefined }
 }
 
-watch(() => [route.query.lowStock, route.query.itemId], () => { syncRouteQuery(); queryStock() })
+watch(() => [route.query.lowStock, route.query.warehouseId, route.query.itemId], () => { syncRouteQuery(); queryStock() })
 onActivated(() => { syncRouteQuery(); getStockList() })
 
 syncRouteQuery()
@@ -169,5 +233,7 @@ getStockList()
 .expiring { color: #f79009; font-weight: 600; }
 :deep(.increase) { color: #12b76a; font-weight: 600; }
 .drawer-summary { margin-bottom: 18px; }
+.operation-alert { margin-bottom: 16px; }
+.operation-summary { margin-bottom: 18px; }
 @media (max-width: 768px) { .page-heading { align-items: flex-start; gap: 12px; } .page-heading p { display: none; } }
 </style>

@@ -16,3 +16,19 @@ export function listRecentMovements(query) {
     params: query
   })
 }
+
+// 查询近 7 日完成入出库趋势
+export function getOperationTrend() {
+  return request({
+    url: '/wms/dashboard/operationTrend',
+    method: 'get'
+  })
+}
+
+// 查询启用仓库的当前库存分布
+export function getWarehouseStockDistribution() {
+  return request({
+    url: '/wms/dashboard/warehouseStockDistribution',
+    method: 'get'
+  })
+}

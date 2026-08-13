@@ -23,6 +23,8 @@ import com.yian.wms.business.mapper.WmsWarehouseMapper;
 @Component
 class WmsDocumentValidator
 {
+    private static final Set<String> RECEIPT_AREA_TYPES=Set.of("RECEIVING","STORAGE","RETURN");
+    private static final Set<String> SHIPMENT_AREA_TYPES=Set.of("STORAGE","PICKING","SHIPPING","RETURN");
     private final WmsWarehouseMapper warehouseMapper;
     private final WmsAreaMapper areaMapper;
     private final WmsLocationMapper locationMapper;
@@ -37,7 +39,7 @@ class WmsDocumentValidator
         Set<String> keys=new HashSet<>();int index=0;
         for(WmsReceiptLine line:lines)
         {
-            index++;if(line==null)throw new ServiceException("第"+index+"行入库明细不能为空");normalizeBatch(line);validateCommon(warehouseId,line.getItemId(),line.getLocationId(),line.getProductionDate(),line.getExpiryDate(),index);
+            index++;if(line==null)throw new ServiceException("第"+index+"行入库明细不能为空");normalizeBatch(line);validateCommon(warehouseId,line.getItemId(),line.getLocationId(),line.getProductionDate(),line.getExpiryDate(),index,RECEIPT_AREA_TYPES,"入库");
             if(line.getPlannedQty()==null||line.getPlannedQty().signum()<=0)throw new ServiceException("第"+index+"行计划数量必须大于0");
             if(line.getReceivedQty()==null)line.setReceivedQty(line.getPlannedQty());
             if(line.getReceivedQty().signum()<0||completion&&line.getReceivedQty().signum()<=0)throw new ServiceException("第"+index+"行实收数量必须大于0");
@@ -51,7 +53,7 @@ class WmsDocumentValidator
         Set<String> keys=new HashSet<>();int index=0;
         for(WmsShipmentLine line:lines)
         {
-            index++;if(line==null)throw new ServiceException("第"+index+"行出库明细不能为空");normalizeBatch(line);validateCommon(warehouseId,line.getItemId(),line.getLocationId(),line.getProductionDate(),line.getExpiryDate(),index);
+            index++;if(line==null)throw new ServiceException("第"+index+"行出库明细不能为空");normalizeBatch(line);validateCommon(warehouseId,line.getItemId(),line.getLocationId(),line.getProductionDate(),line.getExpiryDate(),index,SHIPMENT_AREA_TYPES,"出库");
             if(line.getPlannedQty()==null||line.getPlannedQty().signum()<=0)throw new ServiceException("第"+index+"行计划数量必须大于0");
             if(line.getShippedQty()==null)line.setShippedQty(line.getPlannedQty());
             if(line.getShippedQty().signum()<0||completion&&line.getShippedQty().signum()<=0)throw new ServiceException("第"+index+"行实发数量必须大于0");
@@ -64,12 +66,16 @@ class WmsDocumentValidator
         WmsWarehouse warehouse=warehouseMapper.selectWarehouseById(id);if(warehouse==null)throw new ServiceException("单据仓库不存在");
         if(!"0".equals(warehouse.getStatus()))throw new ServiceException("单据仓库已停用");
     }
-    private void validateCommon(Long warehouseId,Long itemId,Long locationId,Date productionDate,Date expiryDate,int index)
+    private void validateCommon(Long warehouseId,Long itemId,Long locationId,Date productionDate,Date expiryDate,int index,
+            Set<String> allowedAreaTypes,String operation)
     {
         WmsItem item=itemMapper.selectItemById(itemId);if(item==null)throw new ServiceException("第"+index+"行物料不存在");if(!"0".equals(item.getStatus()))throw new ServiceException("第"+index+"行物料已停用");
         WmsLocation location=locationMapper.selectLocationById(locationId);if(location==null)throw new ServiceException("第"+index+"行库位不存在");
         if(!"0".equals(location.getStatus()))throw new ServiceException("第"+index+"行库位已停用");if(!warehouseId.equals(location.getWarehouseId()))throw new ServiceException("第"+index+"行库位不属于单据仓库");
         WmsArea area=areaMapper.selectAreaById(location.getAreaId());if(area==null||!"0".equals(area.getStatus()))throw new ServiceException("第"+index+"行库位所属库区不存在或已停用");
+        if(!warehouseId.equals(area.getWarehouseId()))throw new ServiceException("第"+index+"行库区不属于单据仓库");
+        if("DEFECTIVE".equals(location.getLocationType()))throw new ServiceException("第"+index+"行不良品库位不能用于"+operation+"作业");
+        if(!allowedAreaTypes.contains(area.getAreaType()))throw new ServiceException("第"+index+"行库区类型【"+area.getAreaType()+"】不允许"+operation+"作业");
         if(productionDate!=null&&expiryDate!=null&&productionDate.after(expiryDate))throw new ServiceException("第"+index+"行生产日期不能晚于失效日期");
     }
     private void normalizeBatch(WmsReceiptLine line){line.setBatchNo(normalizeBatch(line.getBatchNo()));}

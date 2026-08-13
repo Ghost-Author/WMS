@@ -11,3 +11,11 @@ export function listLowStock(query) {
 export function listStockMovements(query) {
   return request({ url: '/wms/stock/movement/list', method: 'get', params: query })
 }
+
+export function transferStock(data) {
+  return request({ url: '/wms/stock/transfer', method: 'post', data })
+}
+
+export function adjustStock(data) {
+  return request({ url: '/wms/stock/adjust', method: 'post', data })
+}

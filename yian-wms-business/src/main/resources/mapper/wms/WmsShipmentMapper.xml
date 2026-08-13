@@ -67,4 +67,8 @@
         update wms_shipment set status='COMPLETED',total_qty=#{totalQty},update_by=#{updateBy},update_time=sysdate()
         where shipment_id=#{shipmentId} and status='DRAFT'
     </update>
+    <update id="markCancelled">
+        update wms_shipment set status='CANCELLED',update_by=#{updateBy},update_time=sysdate()
+        where shipment_id=#{shipmentId} and status='DRAFT'
+    </update>
 </mapper>

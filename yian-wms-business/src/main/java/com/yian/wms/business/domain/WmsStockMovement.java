@@ -2,6 +2,7 @@ package com.yian.wms.business.domain;
 
 import java.math.BigDecimal;
 import java.util.Date;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yian.wms.common.annotation.Excel;
 import com.yian.wms.common.core.domain.BaseEntity;
@@ -29,6 +30,8 @@ public class WmsStockMovement extends BaseEntity
     @Excel(name = "结存数量") private BigDecimal balanceQty;
     @Excel(name = "操作人") private String operator;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss") @Excel(name = "操作时间", dateFormat = "yyyy-MM-dd HH:mm:ss") private Date operationTime;
+    /** ExcelUtil only scans annotated fields; expose the inherited remark without duplicating it in JSON. */
+    @Excel(name = "备注/原因") private String exportRemark;
     /** 批次号是否精确匹配（仅用于查询）。 */
     private Boolean exactBatch;
 
@@ -70,6 +73,8 @@ public class WmsStockMovement extends BaseEntity
     public void setOperator(String operator) { this.operator = operator; }
     public Date getOperationTime() { return operationTime; }
     public void setOperationTime(Date operationTime) { this.operationTime = operationTime; }
+    @JsonIgnore public String getExportRemark() { return exportRemark; }
+    public void setExportRemark(String exportRemark) { this.exportRemark = exportRemark; }
     public Boolean getExactBatch() { return exactBatch; }
     public void setExactBatch(Boolean exactBatch) { this.exactBatch = exactBatch; }
 }

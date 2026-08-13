@@ -18,4 +18,5 @@ public interface WmsReceiptMapper
     int deleteLinesByReceiptId(Long receiptId);
     int insertLines(@Param("receiptId") Long receiptId, @Param("lines") List<WmsReceiptLine> lines);
     int markCompleted(@Param("receiptId") Long receiptId, @Param("totalQty") BigDecimal totalQty, @Param("updateBy") String updateBy);
+    int markCancelled(@Param("receiptId") Long receiptId, @Param("updateBy") String updateBy);
 }

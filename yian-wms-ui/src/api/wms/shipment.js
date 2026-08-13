@@ -23,3 +23,7 @@ export function delShipment(shipmentIds) {
 export function completeShipment(shipmentId) {
   return request({ url: `/wms/shipment/${shipmentId}/complete`, method: 'put' })
 }
+
+export function cancelShipment(shipmentId) {
+  return request({ url: `/wms/shipment/${shipmentId}/cancel`, method: 'put' })
+}

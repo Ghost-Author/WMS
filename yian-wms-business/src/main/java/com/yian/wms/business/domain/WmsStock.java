@@ -17,6 +17,8 @@ public class WmsStock extends BaseEntity
     private Long locationId;
     @Excel(name = "库位编码") private String locationCode;
     @Excel(name = "库位名称") private String locationName;
+    private String locationType;
+    private String areaType;
     private Long itemId;
     @Excel(name = "物料编码") private String itemCode;
     @Excel(name = "物料名称") private String itemName;
@@ -28,7 +30,7 @@ public class WmsStock extends BaseEntity
     @Excel(name = "库存数量") private BigDecimal quantity;
     @Excel(name = "锁定数量") private BigDecimal lockedQuantity;
     @Excel(name = "可用数量") private BigDecimal availableQty;
-    private BigDecimal minStock;
+    @Excel(name = "安全库存下限") private BigDecimal minStock;
     private Boolean lowStock;
 
     public Long getStockId() { return stockId; }
@@ -45,6 +47,10 @@ public class WmsStock extends BaseEntity
     public void setLocationCode(String locationCode) { this.locationCode = locationCode; }
     public String getLocationName() { return locationName; }
     public void setLocationName(String locationName) { this.locationName = locationName; }
+    public String getLocationType() { return locationType; }
+    public void setLocationType(String locationType) { this.locationType = locationType; }
+    public String getAreaType() { return areaType; }
+    public void setAreaType(String areaType) { this.areaType = areaType; }
     public Long getItemId() { return itemId; }
     public void setItemId(Long itemId) { this.itemId = itemId; }
     public String getItemCode() { return itemCode; }

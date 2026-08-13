@@ -4,19 +4,24 @@
     <resultMap id="LocationResult" type="WmsLocation">
         <id property="locationId" column="location_id"/><result property="warehouseId" column="warehouse_id"/>
         <result property="warehouseName" column="warehouse_name"/><result property="areaId" column="area_id"/>
-        <result property="areaName" column="area_name"/><result property="locationCode" column="location_code"/>
+        <result property="areaName" column="area_name"/><result property="areaType" column="area_type"/><result property="locationCode" column="location_code"/>
         <result property="locationName" column="location_name"/><result property="locationType" column="location_type"/>
         <result property="capacityQty" column="capacity_qty"/><result property="status" column="status"/>
         <result property="createBy" column="create_by"/><result property="createTime" column="create_time"/>
         <result property="updateBy" column="update_by"/><result property="updateTime" column="update_time"/>
         <result property="remark" column="remark"/>
     </resultMap>
-    <sql id="locationSelect">select l.location_id, l.warehouse_id, w.warehouse_name, l.area_id, a.area_name,
+    <sql id="locationSelect">select l.location_id, l.warehouse_id, w.warehouse_name, l.area_id, a.area_name, a.area_type,
         l.location_code, l.location_name, l.location_type, l.capacity_qty, l.status,
         l.create_by, l.create_time, l.update_by, l.update_time, l.remark
         from wms_location l left join wms_warehouse w on w.warehouse_id=l.warehouse_id
         left join wms_area a on a.area_id=l.area_id</sql>
     <select id="selectLocationById" resultMap="LocationResult"><include refid="locationSelect"/> where l.location_id=#{locationId}</select>
+    <select id="selectLocationByIdForUpdate" resultMap="LocationResult">
+        select l.location_id,l.warehouse_id,l.area_id,l.location_code,l.location_name,l.location_type,
+               l.capacity_qty,l.status,l.create_by,l.create_time,l.update_by,l.update_time,l.remark
+        from wms_location l where l.location_id=#{locationId} for update
+    </select>
     <select id="selectLocationList" parameterType="WmsLocation" resultMap="LocationResult">
         <include refid="locationSelect"/><where>
         <if test="warehouseId != null">and l.warehouse_id=#{warehouseId}</if><if test="areaId != null">and l.area_id=#{areaId}</if>

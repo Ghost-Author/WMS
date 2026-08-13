@@ -26,6 +26,7 @@
         <el-col :span="1.5"><el-button type="primary" plain icon="Plus" @click="handleAdd" v-hasPermi="['wms:area:add']">新增</el-button></el-col>
         <el-col :span="1.5"><el-button type="success" plain icon="Edit" :disabled="single" @click="handleUpdate()" v-hasPermi="['wms:area:edit']">修改</el-button></el-col>
         <el-col :span="1.5"><el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete()" v-hasPermi="['wms:area:remove']">删除</el-button></el-col>
+        <el-col :span="1.5"><el-button type="warning" plain icon="Download" @click="handleExport" v-hasPermi="['wms:area:export']">导出</el-button></el-col>
         <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
       </el-row>
       <el-table v-loading="loading" :data="areaList" @selection-change="handleSelectionChange">
@@ -97,6 +98,7 @@ async function loadWarehouses() { warehouseOptions.value = rowsOf(await getWareh
 async function getList() { loading.value = true; try { const response = await listArea(queryParams.value); areaList.value = rowsOf(response); total.value = totalOf(response, areaList.value) } finally { loading.value = false } }
 function handleQuery() { queryParams.value.pageNum = 1; getList() }
 function resetQuery() { proxy.resetForm('queryRef'); handleQuery() }
+function handleExport() { proxy.download('wms/area/export', queryParams.value, `库区数据_${Date.now()}.xlsx`) }
 function handleSelectionChange(selection) { ids.value = selection.map(item => item.areaId) }
 function handleAdd() { reset(); title.value = '新增库区'; open.value = true }
 async function handleUpdate(row) { reset(); const response = await getArea(row?.areaId ?? ids.value[0]); form.value = dataOf(response); title.value = '修改库区'; open.value = true }

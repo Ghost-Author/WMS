@@ -18,4 +18,5 @@ public interface WmsShipmentMapper
     int deleteLinesByShipmentId(Long shipmentId);
     int insertLines(@Param("shipmentId") Long shipmentId, @Param("lines") List<WmsShipmentLine> lines);
     int markCompleted(@Param("shipmentId") Long shipmentId, @Param("totalQty") BigDecimal totalQty, @Param("updateBy") String updateBy);
+    int markCancelled(@Param("shipmentId") Long shipmentId, @Param("updateBy") String updateBy);
 }

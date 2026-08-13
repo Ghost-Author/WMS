@@ -78,11 +78,16 @@ public class WmsShipmentServiceImpl implements IWmsShipmentService
         }
         if(mapper.markCompleted(id,total,operator)!=1)throw new ServiceException("出库单已完成或状态已变更，请勿重复操作");
     }
+    @Override @Transactional(rollbackFor=Exception.class) public void cancelShipment(Long id,String operator)
+    {
+        WmsShipment shipment=lockDraft(id);
+        if(mapper.markCancelled(id,operator)!=1)throw new ServiceException("出库单【"+shipment.getShipmentNo()+"】状态已变更，不能取消");
+    }
     private WmsShipment lockDraft(Long id)
     {
         if(id==null)throw new ServiceException("出库单ID不能为空");WmsShipment shipment=mapper.selectShipmentForUpdate(id);
         if(shipment==null)throw new ServiceException("出库单不存在或已删除");
-        if(!"DRAFT".equals(shipment.getStatus()))throw new ServiceException("出库单【"+shipment.getShipmentNo()+"】不是草稿状态，不能编辑、删除或完成");return shipment;
+        if(!"DRAFT".equals(shipment.getStatus()))throw new ServiceException("出库单【"+shipment.getShipmentNo()+"】不是草稿状态，不能编辑、删除、完成或取消");return shipment;
     }
     private int insertWithGeneratedNo(WmsShipment shipment)
     {

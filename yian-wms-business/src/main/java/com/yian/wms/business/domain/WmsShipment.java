@@ -38,7 +38,7 @@ public class WmsShipment extends BaseEntity
     public void setWarehouseId(Long warehouseId) { this.warehouseId = warehouseId; }
     public String getWarehouseName() { return warehouseName; }
     public void setWarehouseName(String warehouseName) { this.warehouseName = warehouseName; }
-    @Size(max = 100, message = "客户名称不能超过100个字符") public String getCustomerName() { return customerName; }
+    @NotBlank(message = "客户名称不能为空") @Size(max = 100, message = "客户名称不能超过100个字符") public String getCustomerName() { return customerName; }
     public void setCustomerName(String customerName) { this.customerName = customerName; }
     @NotNull(message = "出库日期不能为空") public Date getShipmentDate() { return shipmentDate; }
     public void setShipmentDate(Date shipmentDate) { this.shipmentDate = shipmentDate; }

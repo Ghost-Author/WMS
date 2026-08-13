@@ -24,6 +24,7 @@
         <el-col :span="1.5"><el-button type="primary" plain icon="Plus" @click="handleAdd" v-hasPermi="['wms:location:add']">新增</el-button></el-col>
         <el-col :span="1.5"><el-button type="success" plain icon="Edit" :disabled="single" @click="handleUpdate()" v-hasPermi="['wms:location:edit']">修改</el-button></el-col>
         <el-col :span="1.5"><el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete()" v-hasPermi="['wms:location:remove']">删除</el-button></el-col>
+        <el-col :span="1.5"><el-button type="warning" plain icon="Download" @click="handleExport" v-hasPermi="['wms:location:export']">导出</el-button></el-col>
         <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
       </el-row>
       <el-table v-loading="loading" :data="locationList" @selection-change="handleSelectionChange">
@@ -33,7 +34,7 @@
         <el-table-column label="库位编码" prop="locationCode" min-width="125" />
         <el-table-column label="库位名称" prop="locationName" min-width="140" show-overflow-tooltip />
         <el-table-column label="类型" width="90" align="center"><template #default="scope"><el-tag :type="locationType(scope.row.locationType).tag" effect="plain">{{ locationType(scope.row.locationType).label }}</el-tag></template></el-table-column>
-        <el-table-column label="容量" prop="capacityQty" width="110" align="right"><template #default="scope">{{ quantity(scope.row.capacityQty) }}</template></el-table-column>
+        <el-table-column label="数量容量" prop="capacityQty" width="110" align="right"><template #default="scope">{{ Number(scope.row.capacityQty) === 0 ? '不限' : quantity(scope.row.capacityQty) }}</template></el-table-column>
         <el-table-column label="状态" width="90" align="center"><template #default="scope"><el-tag :type="normalStatus(scope.row.status).type" effect="light">{{ normalStatus(scope.row.status).label }}</el-tag></template></el-table-column>
         <el-table-column label="操作" width="150" fixed="right" align="center"><template #default="scope"><el-button link type="primary" icon="Edit" @click="handleUpdate(scope.row)" v-hasPermi="['wms:location:edit']">修改</el-button><el-button link type="danger" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="['wms:location:remove']">删除</el-button></template></el-table-column>
       </el-table>
@@ -48,7 +49,7 @@
           <el-col :xs="24" :sm="12"><el-form-item label="库位编码" prop="locationCode"><el-input v-model="form.locationCode" placeholder="例如 A01-01-01" maxlength="32" /></el-form-item></el-col>
           <el-col :xs="24" :sm="12"><el-form-item label="库位名称" prop="locationName"><el-input v-model="form.locationName" placeholder="请输入库位名称" maxlength="100" /></el-form-item></el-col>
           <el-col :xs="24" :sm="12"><el-form-item label="库位类型" prop="locationType"><el-select v-model="form.locationType" style="width: 100%"><el-option v-for="item in locationTypes" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item></el-col>
-          <el-col :xs="24" :sm="12"><el-form-item label="容量" prop="capacityQty"><el-input-number v-model="form.capacityQty" :min="0" :precision="4" :step="1" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+          <el-col :xs="24" :sm="12"><el-form-item label="数量容量" prop="capacityQty"><el-input-number v-model="form.capacityQty" :min="0" :precision="4" :step="1" controls-position="right" style="width: 100%" /><div class="form-tip">0 表示不限；入库、调拨入和盘盈会校验库位总量。</div></el-form-item></el-col>
           <el-col :span="24"><el-form-item label="状态" prop="status"><el-radio-group v-model="form.status"><el-radio v-for="item in normalStatusOptions" :key="item.value" :value="item.value">{{ item.label }}</el-radio></el-radio-group></el-form-item></el-col>
         </el-row>
       </el-form>
@@ -106,6 +107,7 @@ async function loadWarehouses() { warehouseOptions.value = rowsOf(await getWareh
 async function getList() { loading.value = true; try { const response = await listLocation(queryParams.value); locationList.value = rowsOf(response); total.value = totalOf(response, locationList.value) } finally { loading.value = false } }
 function handleQuery() { queryParams.value.pageNum = 1; getList() }
 function resetQuery() { proxy.resetForm('queryRef'); queryAreaOptions.value = []; handleQuery() }
+function handleExport() { proxy.download('wms/location/export', queryParams.value, `库位数据_${Date.now()}.xlsx`) }
 function handleSelectionChange(selection) { ids.value = selection.map(item => item.locationId) }
 function handleAdd() { reset(); title.value = '新增库位'; open.value = true }
 async function handleUpdate(row) { reset(); const response = await getLocation(row?.locationId ?? ids.value[0]); form.value = dataOf(response); await handleFormWarehouseChange(form.value.warehouseId, true); title.value = '修改库位'; open.value = true }
@@ -121,5 +123,6 @@ getList()
 .page-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; h2 { margin: 0 0 6px; font-size: 22px; color: #1d2939; } p { margin: 0; color: #667085; } }
 .search-card { margin-bottom: 14px; :deep(.el-card__body) { padding-bottom: 2px; } }
 .table-card :deep(.el-card__body) { padding: 18px; }
+.form-tip { margin-top: 4px; color: #98a2b3; font-size: 12px; line-height: 18px; }
 @media (max-width: 768px) { .page-heading { align-items: flex-start; gap: 12px; } .page-heading p { display: none; } }
 </style>

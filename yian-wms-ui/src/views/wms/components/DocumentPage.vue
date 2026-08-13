@@ -22,6 +22,8 @@
         <el-col :span="1.5"><el-button type="success" plain icon="Edit" :disabled="!canEditSelection" @click="handleUpdate()" v-hasPermi="[`${config.permission}:edit`]">修改</el-button></el-col>
         <el-col :span="1.5"><el-button type="danger" plain icon="Delete" :disabled="!canDeleteSelection" @click="handleDelete()" v-hasPermi="[`${config.permission}:remove`]">删除</el-button></el-col>
         <el-col :span="1.5"><el-button type="warning" plain icon="CircleCheck" :disabled="!canCompleteSelection" @click="handleComplete()" v-hasPermi="[`${config.permission}:complete`]">完成{{ config.shortLabel }}</el-button></el-col>
+        <el-col :span="1.5"><el-button type="info" plain icon="CircleClose" :disabled="!canCancelSelection" @click="handleCancel()" v-hasPermi="[`${config.permission}:cancel`]">取消单据</el-button></el-col>
+        <el-col :span="1.5"><el-button type="warning" plain icon="Download" @click="handleExport" v-hasPermi="[`${config.permission}:export`]">导出</el-button></el-col>
         <right-toolbar v-model:showSearch="showSearch" @queryTable="getList" />
       </el-row>
 
@@ -36,12 +38,13 @@
         <el-table-column label="状态" prop="status" width="100" align="center"><template #default="scope"><el-tag :type="documentStatus(scope.row.status).type" effect="light">{{ documentStatus(scope.row.status).label }}</el-tag></template></el-table-column>
         <el-table-column label="创建人" prop="createBy" width="105" show-overflow-tooltip />
         <el-table-column label="创建时间" prop="createTime" width="165"><template #default="scope">{{ proxy.parseTime(scope.row.createTime) || '-' }}</template></el-table-column>
-        <el-table-column label="操作" width="230" fixed="right" align="center">
+        <el-table-column label="操作" width="280" fixed="right" align="center">
           <template #default="scope">
             <el-button link type="primary" icon="View" @click="handleView(scope.row)" v-hasPermi="[`${config.permission}:query`]">查看</el-button>
             <template v-if="isDraft(scope.row)">
               <el-button link type="primary" icon="Edit" @click="handleUpdate(scope.row)" v-hasPermi="[`${config.permission}:edit`]">修改</el-button>
               <el-button link type="success" icon="CircleCheck" @click="handleComplete(scope.row)" v-hasPermi="[`${config.permission}:complete`]">完成</el-button>
+              <el-button link type="warning" icon="CircleClose" @click="handleCancel(scope.row)" v-hasPermi="[`${config.permission}:cancel`]">取消</el-button>
               <el-button link type="danger" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="[`${config.permission}:remove`]">删除</el-button>
             </template>
           </template>
@@ -60,6 +63,7 @@
             <el-col :xs="24" :md="8"><el-form-item label="单据日期" :prop="config.dateKey"><el-date-picker v-model="form[config.dateKey]" type="date" value-format="YYYY-MM-DD" placeholder="请选择日期" style="width: 100%" /></el-form-item></el-col>
             <el-col :xs="24" :md="12"><el-form-item label="仓库" prop="warehouseId"><el-select v-model="form.warehouseId" filterable placeholder="请选择仓库" style="width: 100%" @change="handleWarehouseChange"><el-option v-for="item in warehouseOptions" :key="item.warehouseId" :label="optionText(item, 'warehouseCode', 'warehouseName')" :value="item.warehouseId" /></el-select></el-form-item></el-col>
             <el-col :xs="24" :md="12"><el-form-item :label="config.partnerLabel" :prop="config.partnerKey"><el-input v-model="form[config.partnerKey]" :placeholder="`请输入${config.partnerLabel}`" maxlength="100" /></el-form-item></el-col>
+            <el-col :span="24"><el-form-item label="单据备注"><el-input v-model="form.remark" type="textarea" :rows="2" maxlength="500" show-word-limit placeholder="请输入业务背景、交接要求或其他说明" /></el-form-item></el-col>
           </el-row>
 
           <div class="line-heading"><div><strong>{{ config.shortLabel }}明细</strong><span>共 {{ form.lines?.length || 0 }} 行，计划 {{ quantity(plannedTotal) }}，{{ config.actualLabel }} {{ quantity(actualTotal) }}</span></div><el-button v-if="!readonly" type="primary" plain icon="Plus" @click="addLine">添加明细</el-button></div>
@@ -86,8 +90,8 @@
 </template>
 
 <script setup name="WmsDocumentPage">
-import { addReceipt, completeReceipt, delReceipt, getReceipt, listReceipt, updateReceipt } from '@/api/wms/receipt'
-import { addShipment, completeShipment, delShipment, getShipment, listShipment, updateShipment } from '@/api/wms/shipment'
+import { addReceipt, cancelReceipt, completeReceipt, delReceipt, getReceipt, listReceipt, updateReceipt } from '@/api/wms/receipt'
+import { addShipment, cancelShipment, completeShipment, delShipment, getShipment, listShipment, updateShipment } from '@/api/wms/shipment'
 import { getItemOptions } from '@/api/wms/item'
 import { getLocationOptions } from '@/api/wms/location'
 import { getWarehouseOptions } from '@/api/wms/warehouse'
@@ -104,13 +108,13 @@ const configs = {
     pageTitle: '入库管理', description: '创建并完成采购、退货等入库单据，完成后自动增加库存。', businessLabel: '入库业务', shortLabel: '入库单', tagType: 'success',
     idKey: 'receiptId', noKey: 'receiptNo', typeKey: 'receiptType', dateKey: 'receiptDate', partnerKey: 'supplierName', partnerLabel: '供应商', actualKey: 'receivedQty', actualLabel: '实收数量', permission: 'wms:receipt',
     types: [{ value: 'PURCHASE', label: '采购入库' }, { value: 'RETURN', label: '退货入库' }, { value: 'OTHER', label: '其他入库' }],
-    api: { list: listReceipt, get: getReceipt, add: addReceipt, update: updateReceipt, remove: delReceipt, complete: completeReceipt }
+    api: { list: listReceipt, get: getReceipt, add: addReceipt, update: updateReceipt, remove: delReceipt, complete: completeReceipt, cancel: cancelReceipt }
   },
   shipment: {
     pageTitle: '出库管理', description: '创建并完成销售、退货等出库单据，完成前校验可用库存。', businessLabel: '出库业务', shortLabel: '出库单', tagType: 'primary',
     idKey: 'shipmentId', noKey: 'shipmentNo', typeKey: 'shipmentType', dateKey: 'shipmentDate', partnerKey: 'customerName', partnerLabel: '客户', actualKey: 'shippedQty', actualLabel: '实发数量', permission: 'wms:shipment',
     types: [{ value: 'SALE', label: '销售出库' }, { value: 'RETURN', label: '退货出库' }, { value: 'OTHER', label: '其他出库' }],
-    api: { list: listShipment, get: getShipment, add: addShipment, update: updateShipment, remove: delShipment, complete: completeShipment }
+    api: { list: listShipment, get: getShipment, add: addShipment, update: updateShipment, remove: delShipment, complete: completeShipment, cancel: cancelShipment }
   }
 }
 const config = computed(() => configs[props.kind])
@@ -146,6 +150,7 @@ const lineRules = {
 const canEditSelection = computed(() => selectedRows.value.length === 1 && isDraft(selectedRows.value[0]))
 const canDeleteSelection = computed(() => selectedRows.value.length > 0 && selectedRows.value.every(isDraft))
 const canCompleteSelection = computed(() => selectedRows.value.length === 1 && isDraft(selectedRows.value[0]))
+const canCancelSelection = computed(() => selectedRows.value.length === 1 && isDraft(selectedRows.value[0]))
 const plannedTotal = computed(() => (form.value.lines || []).reduce((sum, line) => sum + Number(line.plannedQty || 0), 0))
 const actualTotal = computed(() => (form.value.lines || []).reduce((sum, line) => sum + Number(line[config.value.actualKey] || 0), 0))
 
@@ -155,7 +160,7 @@ function typeLabel(value) { return config.value.types.find(item => item.value ==
 function isDraft(row) { return row?.status === 'DRAFT' }
 function newLine() { return { itemId: undefined, locationId: undefined, batchNo: '', ...(props.kind === 'receipt' ? { productionDate: undefined, expiryDate: undefined } : {}), plannedQty: 1, [config.value.actualKey]: 0 } }
 function reset() {
-  form.value = { [config.value.idKey]: undefined, [config.value.noKey]: '', [config.value.typeKey]: config.value.types[0].value, warehouseId: undefined, [config.value.partnerKey]: '', [config.value.dateKey]: localToday(), status: 'DRAFT', totalQty: 0, lines: [newLine()] }
+  form.value = { [config.value.idKey]: undefined, [config.value.noKey]: '', [config.value.typeKey]: config.value.types[0].value, warehouseId: undefined, [config.value.partnerKey]: '', [config.value.dateKey]: localToday(), status: 'DRAFT', totalQty: 0, remark: '', lines: [newLine()] }
   locationOptions.value = []
   proxy.resetForm('documentRef')
 }
@@ -171,7 +176,10 @@ async function loadOptions() {
 }
 async function handleWarehouseChange(warehouseId, preserveLocations = false) {
   if (!preserveLocations) (form.value.lines || []).forEach(line => { line.locationId = undefined })
-  locationOptions.value = warehouseId ? rowsOf(await getLocationOptions({ warehouseId, status: '0' })) : []
+  const allowedAreas = props.kind === 'receipt' ? ['RECEIVING', 'STORAGE', 'RETURN'] : ['STORAGE', 'PICKING', 'SHIPPING', 'RETURN']
+  locationOptions.value = warehouseId
+    ? rowsOf(await getLocationOptions({ warehouseId, status: '0' })).filter(item => item.locationType !== 'DEFECTIVE' && allowedAreas.includes(item.areaType))
+    : []
 }
 function queryData() {
   const params = { ...queryParams }
@@ -186,6 +194,7 @@ async function getList() {
 }
 function handleQuery() { queryParams.pageNum = 1; getList() }
 function resetQuery() { proxy.resetForm('queryRef'); dateRange.value = []; handleQuery() }
+function handleExport() { proxy.download(`${config.value.permission.replace(':', '/')}/export`, queryData(), `${config.value.shortLabel}_${Date.now()}.xlsx`) }
 function handleSelectionChange(selection) { selectedRows.value = selection }
 function handleAdd() { reset(); readonly.value = false; dialogTitle.value = `新增${config.value.shortLabel}`; open.value = true }
 async function loadDetail(row, viewOnly) {
@@ -234,6 +243,14 @@ async function handleComplete(row) {
   await proxy.$modal.confirm(`完成后将立即${props.kind === 'receipt' ? '增加' : '扣减'}库存且不可修改，确认完成单据 ${target[config.value.noKey]} 吗？`)
   await config.value.api.complete(target[config.value.idKey])
   proxy.$modal.msgSuccess(`${config.value.shortLabel}已完成`)
+  getList()
+}
+async function handleCancel(row) {
+  const target = row || selectedRows.value[0]
+  if (!isDraft(target)) return proxy.$modal.msgWarning('仅草稿单据允许取消')
+  await proxy.$modal.confirm(`取消后单据将关闭且不可修改，确认取消单据 ${target[config.value.noKey]} 吗？`)
+  await config.value.api.cancel(target[config.value.idKey])
+  proxy.$modal.msgSuccess(`${config.value.shortLabel}已取消`)
   getList()
 }
 

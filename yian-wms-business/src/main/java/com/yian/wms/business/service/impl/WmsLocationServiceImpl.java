@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Set;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import com.yian.wms.common.exception.ServiceException;
 import com.yian.wms.common.utils.StringUtils;
@@ -13,6 +14,7 @@ import com.yian.wms.business.domain.WmsLocation;
 import com.yian.wms.business.domain.WmsWarehouse;
 import com.yian.wms.business.mapper.WmsAreaMapper;
 import com.yian.wms.business.mapper.WmsLocationMapper;
+import com.yian.wms.business.mapper.WmsStockMapper;
 import com.yian.wms.business.mapper.WmsWarehouseMapper;
 import com.yian.wms.business.service.IWmsLocationService;
 
@@ -21,21 +23,35 @@ public class WmsLocationServiceImpl implements IWmsLocationService
 {
     private static final Set<String> LOCATION_TYPES=Set.of("NORMAL","FROZEN","DEFECTIVE");
     private final WmsLocationMapper mapper;
+    private final WmsStockMapper stockMapper;
     private final WmsAreaMapper areaMapper;
     private final WmsWarehouseMapper warehouseMapper;
-    public WmsLocationServiceImpl(WmsLocationMapper mapper,WmsAreaMapper areaMapper,WmsWarehouseMapper warehouseMapper)
-    { this.mapper=mapper;this.areaMapper=areaMapper;this.warehouseMapper=warehouseMapper; }
+    public WmsLocationServiceImpl(WmsLocationMapper mapper,WmsStockMapper stockMapper,
+            WmsAreaMapper areaMapper,WmsWarehouseMapper warehouseMapper)
+    { this.mapper=mapper;this.stockMapper=stockMapper;this.areaMapper=areaMapper;this.warehouseMapper=warehouseMapper; }
 
     @Override public WmsLocation selectLocationById(Long id){return mapper.selectLocationById(id);}
     @Override public List<WmsLocation> selectLocationList(WmsLocation query){return mapper.selectLocationList(query);}
     @Override public List<WmsLocation> selectEnabledOptions(Long warehouseId){return mapper.selectEnabledOptions(warehouseId);}
     @Override public int insertLocation(WmsLocation location){normalizeAndValidate(location);checkCode(location);return mapper.insertLocation(location);}
-    @Override public int updateLocation(WmsLocation location)
+    @Override @Transactional(isolation=Isolation.READ_COMMITTED,rollbackFor=Exception.class)
+    public int updateLocation(WmsLocation location)
     {
-        WmsLocation old=requireExists(location.getLocationId());normalizeAndValidate(location);checkCode(location);
+        if(location==null||location.getLocationId()==null)throw new ServiceException("库位ID不能为空");
+        WmsLocation old=mapper.selectLocationByIdForUpdate(location.getLocationId());
+        if(old==null)throw new ServiceException("库位不存在或已删除");
+        normalizeAndValidate(location);checkCode(location);
+        BigDecimal current=stockMapper.selectTotalQuantityByLocation(location.getLocationId());
+        if(current==null)current=BigDecimal.ZERO;
+        if(location.getCapacityQty().signum()>0&&current.compareTo(location.getCapacityQty())>0)
+            throw new ServiceException("库位【"+old.getLocationCode()+"】当前库存"+current.toPlainString()+"，容量不能下调至"+location.getCapacityQty().toPlainString());
+        if(current.signum()>0&&"1".equals(location.getStatus())&&!"1".equals(old.getStatus()))
+            throw new ServiceException("库位【"+old.getLocationCode()+"】仍有库存，不能停用");
+        if(current.signum()>0&&"DEFECTIVE".equals(location.getLocationType())&&!"DEFECTIVE".equals(old.getLocationType()))
+            throw new ServiceException("库位【"+old.getLocationCode()+"】仍有库存，不能直接改为不良品库位");
         if(mapper.countReferences(location.getLocationId())>0 && (!old.getWarehouseId().equals(location.getWarehouseId())||!old.getAreaId().equals(location.getAreaId())))
             throw new ServiceException("库位已被库存或单据引用，不能变更所属仓库/库区");
-        return mapper.updateLocation(location);
+        int rows=mapper.updateLocation(location);if(rows!=1)throw new ServiceException("库位状态已变更，请刷新后重试");return rows;
     }
     @Override @Transactional(rollbackFor=Exception.class) public void deleteLocationByIds(Long[] ids)
     {

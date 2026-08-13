@@ -10,10 +10,15 @@ readonly source_dir="/opt/wms-src"
 readonly app_dir="/opt/wms"
 readonly legacy_sql_fingerprint="d34f80965c3d2d6c9140641e680f74dbb7e95a9f950be0563e2e16625052f45f"
 readonly naming_migration="${source_dir}/sql/migrations/V1.0.0__rebrand_to_yian_wms.sql"
+readonly core_extension_version="1.1.0"
+readonly core_extension_migration="${source_dir}/sql/migrations/V1.1.0__wms_core_extensions.sql"
+readonly demo_seed="${source_dir}/sql/demo/wms_demo_seed.sql"
+readonly demo_refresh="${source_dir}/sql/demo/wms_demo_refresh.sql"
 
 env_tmp=""
 env_refresh=""
 valkey_tmp=""
+backup_tmp=""
 cleanup_install() {
   local exit_code=$?
   local secret_tmp
@@ -23,6 +28,9 @@ cleanup_install() {
       shred -u -- "${secret_tmp}" || rm -f -- "${secret_tmp}"
     fi
   done
+  if [[ -n "${backup_tmp}" && "${backup_tmp}" =~ ^/var/backups/yian-wms/wms-before-[A-Za-z0-9._-]+\.sql\.tmp\.[0-9]+$ ]]; then
+    sudo rm -f -- "${backup_tmp}"
+  fi
   exit "${exit_code}"
 }
 trap cleanup_install EXIT
@@ -45,7 +53,7 @@ readonly release_id="${expected_commit:0:12}-${ui_sha256:0:12}"
 readonly web_dir="/var/www/wms-${release_id}"
 readonly jar_release="${app_dir}/releases/yian-wms-admin-${expected_commit:0:12}-${jar_sha256:0:12}.jar"
 
-for command_name in curl git mysql mysqldump nginx openssl sed sha256sum shred sudo systemctl tar valkey-cli; do
+for command_name in curl date git mysql mysqldump nginx openssl sed sha256sum shred sudo systemctl tar valkey-cli; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
     echo "Missing required command: ${command_name}" >&2
     exit 1
@@ -132,12 +140,12 @@ if [[ ! -f /etc/wms/wms.env ]]; then
   druid_password="$(openssl rand -hex 24)"
   env_tmp="$(mktemp)"
   chmod 0600 "${env_tmp}"
-  sed \
-    -e "s/CHANGE_ME_DATABASE_PASSWORD/${db_password}/" \
-    -e "s/CHANGE_ME_VALKEY_PASSWORD/${valkey_password}/" \
-    -e "s/CHANGE_ME_WITH_AT_LEAST_32_RANDOM_CHARACTERS/${token_secret}/" \
-    -e "s/CHANGE_ME_DRUID_PASSWORD/${druid_password}/" \
-    "${staging_dir}/wms.env.example" > "${env_tmp}"
+  {
+    printf 's/CHANGE_ME_DATABASE_PASSWORD/%s/\n' "${db_password}"
+    printf 's/CHANGE_ME_VALKEY_PASSWORD/%s/\n' "${valkey_password}"
+    printf 's/CHANGE_ME_WITH_AT_LEAST_32_RANDOM_CHARACTERS/%s/\n' "${token_secret}"
+    printf 's/CHANGE_ME_DRUID_PASSWORD/%s/\n' "${druid_password}"
+  } | sed -f - "${staging_dir}/wms.env.example" > "${env_tmp}"
   sudo install -o root -g root -m 0600 "${env_tmp}" /etc/wms/wms.env
   shred -u "${env_tmp}"
   env_tmp=""
@@ -194,8 +202,10 @@ fi
 sudo systemctl restart valkey-server
 VALKEYCLI_AUTH="${valkey_password}" valkey-cli ping >/dev/null
 
-sudo mysql -e "CREATE DATABASE IF NOT EXISTS wms CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
-sudo mysql -e "CREATE USER IF NOT EXISTS 'wms'@'127.0.0.1' IDENTIFIED BY '${db_password}'; ALTER USER 'wms'@'127.0.0.1' IDENTIFIED BY '${db_password}'; GRANT ALL PRIVILEGES ON wms.* TO 'wms'@'127.0.0.1'; FLUSH PRIVILEGES;"
+printf '%s\n' "CREATE DATABASE IF NOT EXISTS wms CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;" |
+  sudo mysql
+printf '%s\n' "CREATE USER IF NOT EXISTS 'wms'@'127.0.0.1' IDENTIFIED BY '${db_password}'; ALTER USER 'wms'@'127.0.0.1' IDENTIFIED BY '${db_password}'; GRANT ALL PRIVILEGES ON wms.* TO 'wms'@'127.0.0.1'; FLUSH PRIVILEGES;" |
+  sudo mysql
 
 sql_fingerprint="$({
   sha256sum "${source_dir}/sql/yian_wms_20260320.sql"
@@ -215,19 +225,21 @@ if [[ "${marker_exists}" == "1" ]]; then
     fi
 
     backup_dir="/var/backups/yian-wms"
-    backup_path="${backup_dir}/wms-before-1.0.0-${expected_commit:0:12}.sql"
+    backup_path="${backup_dir}/wms-before-1.0.0-${expected_commit:0:12}-$(date -u +%Y%m%dT%H%M%SZ).sql"
+    backup_tmp="${backup_path}.tmp.$$"
     sudo install -d -o root -g root -m 0700 "${backup_dir}"
-    if ! sudo test -s "${backup_path}"; then
-      backup_tmp="${backup_path}.tmp"
-      sudo mysqldump --single-transaction --routines --triggers wms |
-        sudo tee "${backup_tmp}" >/dev/null
-      sudo chmod 0600 "${backup_tmp}"
-      sudo mv "${backup_tmp}" "${backup_path}"
-    fi
-    if ! sudo test -s "${backup_path}"; then
-      echo "Database backup failed" >&2
+    if ! sudo mysqldump --single-transaction --routines --triggers wms |
+      sudo tee "${backup_tmp}" >/dev/null; then
+      echo "Database backup before 1.0.0 migration failed" >&2
       exit 1
     fi
+    sudo chmod 0600 "${backup_tmp}"
+    if ! sudo test -s "${backup_tmp}"; then
+      echo "Database backup before 1.0.0 migration is empty" >&2
+      exit 1
+    fi
+    sudo mv "${backup_tmp}" "${backup_path}"
+    backup_tmp=""
 
     sudo mysql --database=wms < "${naming_migration}"
     sudo mysql --database=wms -e "UPDATE wms_deployment_version SET sql_fingerprint='${sql_fingerprint}', source_commit='${expected_commit}', applied_at=CURRENT_TIMESTAMP WHERE id=1;"
@@ -248,6 +260,93 @@ else
   fi
   sudo mysql --database=wms -e "CREATE TABLE wms_deployment_version (id TINYINT UNSIGNED NOT NULL PRIMARY KEY, sql_fingerprint CHAR(64) NOT NULL, source_commit CHAR(40) NOT NULL, applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP); INSERT INTO wms_deployment_version (id, sql_fingerprint, source_commit) VALUES (1, '${sql_fingerprint}', '${expected_commit}');"
 fi
+
+if [[ ! -f "${core_extension_migration}" || -L "${core_extension_migration}" ]]; then
+  echo "Missing regular core extension migration: ${core_extension_migration}" >&2
+  exit 1
+fi
+
+core_extension_fingerprint="$(sha256sum "${core_extension_migration}" | awk '{print $1}')"
+sudo mysql --database=wms -e "CREATE TABLE IF NOT EXISTS wms_schema_migration (version VARCHAR(32) NOT NULL PRIMARY KEY, script_fingerprint CHAR(64) NOT NULL, source_commit CHAR(40) NOT NULL, applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP);"
+installed_core_fingerprint="$(sudo mysql -NBe "SELECT script_fingerprint FROM wms.wms_schema_migration WHERE version='${core_extension_version}'")"
+if [[ -n "${installed_core_fingerprint}" && "${installed_core_fingerprint}" != "${core_extension_fingerprint}" ]]; then
+  echo "Applied migration ${core_extension_version} differs from the immutable repository script" >&2
+  exit 1
+fi
+if [[ -z "${installed_core_fingerprint}" ]]; then
+  backup_dir="/var/backups/yian-wms"
+  backup_path="${backup_dir}/wms-before-core-${core_extension_version}-${expected_commit:0:12}-$(date -u +%Y%m%dT%H%M%SZ).sql"
+  backup_tmp="${backup_path}.tmp.$$"
+  sudo install -d -o root -g root -m 0700 "${backup_dir}"
+  if ! sudo mysqldump --single-transaction --routines --triggers wms |
+    sudo tee "${backup_tmp}" >/dev/null; then
+    sudo rm -f -- "${backup_tmp}"
+    echo "Database backup before core extension migration failed" >&2
+    exit 1
+  fi
+  sudo chmod 0600 "${backup_tmp}"
+  if ! sudo test -s "${backup_tmp}"; then
+    sudo rm -f -- "${backup_tmp}"
+    echo "Database backup before core extension migration is empty" >&2
+    exit 1
+  fi
+  sudo mv "${backup_tmp}" "${backup_path}"
+  backup_tmp=""
+
+  sudo mysql --database=wms < "${core_extension_migration}"
+  sudo mysql --database=wms -e "INSERT IGNORE INTO wms_schema_migration (version, script_fingerprint, source_commit) VALUES ('${core_extension_version}', '${core_extension_fingerprint}', '${expected_commit}');"
+  recorded_core_fingerprint="$(sudo mysql -NBe "SELECT script_fingerprint FROM wms.wms_schema_migration WHERE version='${core_extension_version}'")"
+  if [[ "${recorded_core_fingerprint}" != "${core_extension_fingerprint}" ]]; then
+    echo "Concurrent migration ${core_extension_version} used a different immutable script" >&2
+    exit 1
+  fi
+fi
+
+if [[ ! -f "${demo_seed}" || -L "${demo_seed}" || ! -f "${demo_refresh}" || -L "${demo_refresh}" ]]; then
+  echo "Missing regular demo seed or refresh file" >&2
+  exit 1
+fi
+
+demo_seed_fingerprint="$(sha256sum "${demo_seed}" | awk '{print $1}')"
+demo_marker_exists="$(sudo mysql -NBe "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='wms' AND table_name='wms_demo_seed_version'")"
+installed_demo_fingerprint=""
+if [[ "${demo_marker_exists}" == "1" ]]; then
+  demo_refreshed_column_exists="$(sudo mysql -NBe "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='wms' AND table_name='wms_demo_seed_version' AND column_name='refreshed_on'")"
+  if [[ "${demo_refreshed_column_exists}" != "1" ]]; then
+    sudo mysql --database=wms -e "ALTER TABLE wms_demo_seed_version ADD COLUMN refreshed_on DATE DEFAULT NULL AFTER applied_at;"
+  fi
+  installed_demo_fingerprint="$(sudo mysql -NBe "SELECT seed_fingerprint FROM wms.wms_demo_seed_version WHERE id=1")"
+fi
+
+if [[ "${installed_demo_fingerprint}" != "${demo_seed_fingerprint}" ]]; then
+  backup_dir="/var/backups/yian-wms"
+  backup_path="${backup_dir}/wms-before-demo-${demo_seed_fingerprint:0:12}-${expected_commit:0:12}-$(date -u +%Y%m%dT%H%M%SZ).sql"
+  backup_tmp="${backup_path}.tmp.$$"
+  sudo install -d -o root -g root -m 0700 "${backup_dir}"
+  if ! sudo mysqldump --single-transaction --routines --triggers wms |
+    sudo tee "${backup_tmp}" >/dev/null; then
+    sudo rm -f -- "${backup_tmp}"
+    echo "Database backup before demo seed failed" >&2
+    exit 1
+  fi
+  sudo chmod 0600 "${backup_tmp}"
+  if ! sudo test -s "${backup_tmp}"; then
+    sudo rm -f -- "${backup_tmp}"
+    echo "Database backup before demo seed is empty" >&2
+    exit 1
+  fi
+  sudo mv "${backup_tmp}" "${backup_path}"
+  backup_tmp=""
+
+  sudo mysql --database=wms < "${demo_seed}"
+  sudo mysql --database=wms -e "CREATE TABLE IF NOT EXISTS wms_demo_seed_version (id TINYINT UNSIGNED NOT NULL PRIMARY KEY, seed_fingerprint CHAR(64) NOT NULL, source_commit CHAR(40) NOT NULL, applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, refreshed_on DATE DEFAULT NULL); INSERT INTO wms_demo_seed_version (id, seed_fingerprint, source_commit, applied_at) VALUES (1, '${demo_seed_fingerprint}', '${expected_commit}', CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE seed_fingerprint=VALUES(seed_fingerprint), source_commit=VALUES(source_commit), applied_at=CURRENT_TIMESTAMP;"
+else
+  sudo mysql --database=wms -e "UPDATE wms_demo_seed_version SET source_commit='${expected_commit}' WHERE id=1;"
+fi
+
+# Refresh only the fixed demo document dates so dashboard trends stay meaningful across later deployments.
+sudo mysql --database=wms < "${demo_refresh}"
+sudo mysql --database=wms -e "UPDATE wms_demo_seed_version SET source_commit='${expected_commit}', refreshed_on=CURDATE() WHERE id=1;"
 
 jar_tmp="${jar_release}.tmp.$$"
 sudo install -o root -g root -m 0644 "${staging_dir}/yian-wms-admin.jar" "${jar_tmp}"

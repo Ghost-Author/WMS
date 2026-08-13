@@ -2,19 +2,24 @@ package com.yian.wms.business.service.impl;
 
 import java.math.BigDecimal;
 import java.util.Comparator;
+import java.util.Map;
 import java.util.Objects;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeMap;
 import org.springframework.stereotype.Service;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import com.yian.wms.common.exception.ServiceException;
 import com.yian.wms.common.utils.StringUtils;
 import com.yian.wms.business.domain.WmsReceipt;
 import com.yian.wms.business.domain.WmsReceiptLine;
+import com.yian.wms.business.domain.WmsLocation;
 import com.yian.wms.business.domain.WmsStock;
 import com.yian.wms.business.domain.WmsStockMovement;
 import com.yian.wms.business.mapper.WmsReceiptMapper;
+import com.yian.wms.business.mapper.WmsLocationMapper;
 import com.yian.wms.business.mapper.WmsStockMapper;
 import com.yian.wms.business.service.IWmsReceiptService;
 import com.yian.wms.business.util.WmsDocumentNoGenerator;
@@ -26,9 +31,11 @@ public class WmsReceiptServiceImpl implements IWmsReceiptService
     private static final BigDecimal MAX_TOTAL=new BigDecimal("99999999999999.9999");
     private final WmsReceiptMapper mapper;
     private final WmsStockMapper stockMapper;
+    private final WmsLocationMapper locationMapper;
     private final WmsDocumentValidator validator;
-    public WmsReceiptServiceImpl(WmsReceiptMapper mapper,WmsStockMapper stockMapper,WmsDocumentValidator validator)
-    {this.mapper=mapper;this.stockMapper=stockMapper;this.validator=validator;}
+    public WmsReceiptServiceImpl(WmsReceiptMapper mapper,WmsStockMapper stockMapper,
+            WmsDocumentValidator validator,WmsLocationMapper locationMapper)
+    {this.mapper=mapper;this.stockMapper=stockMapper;this.validator=validator;this.locationMapper=locationMapper;}
 
     @Override public WmsReceipt selectReceiptById(Long id)
     {
@@ -59,13 +66,15 @@ public class WmsReceiptServiceImpl implements IWmsReceiptService
         for(Long id:ids){WmsReceipt receipt=lockDraft(id);mapper.deleteLinesByReceiptId(id);if(mapper.deleteReceiptById(id)!=1)throw new ServiceException("入库单【"+receipt.getReceiptNo()+"】状态已变更，不能删除");}
     }
 
-    @Override @Transactional(rollbackFor=Exception.class)
+    // Capacity writers serialize on the location row; READ_COMMITTED makes the following SUM see the prior writer's commit.
+    @Override @Transactional(isolation=Isolation.READ_COMMITTED,rollbackFor=Exception.class)
     public void completeReceipt(Long id,String operator)
     {
         WmsReceipt receipt=lockDraft(id);List<WmsReceiptLine> lines=mapper.selectLinesByReceiptId(id);
         validator.validateReceipt(receipt.getWarehouseId(),lines,true);
-        lines.sort(Comparator.comparing(WmsReceiptLine::getLocationId).thenComparing(WmsReceiptLine::getItemId).thenComparing(WmsReceiptLine::getBatchNo));
         BigDecimal total=lines.stream().map(WmsReceiptLine::getReceivedQty).reduce(BigDecimal.ZERO,BigDecimal::add);validateTotal(total);
+        validateLocationCapacity(lines);
+        lines.sort(Comparator.comparing(WmsReceiptLine::getLocationId).thenComparing(WmsReceiptLine::getItemId).thenComparing(WmsReceiptLine::getBatchNo));
         for(WmsReceiptLine line:lines)
         {
             BigDecimal qty=line.getReceivedQty();
@@ -80,11 +89,18 @@ public class WmsReceiptServiceImpl implements IWmsReceiptService
         if(mapper.markCompleted(id,total,operator)!=1)throw new ServiceException("入库单已完成或状态已变更，请勿重复操作");
     }
 
+    @Override @Transactional(rollbackFor=Exception.class)
+    public void cancelReceipt(Long id,String operator)
+    {
+        WmsReceipt receipt=lockDraft(id);
+        if(mapper.markCancelled(id,operator)!=1)throw new ServiceException("入库单【"+receipt.getReceiptNo()+"】状态已变更，不能取消");
+    }
+
     private WmsReceipt lockDraft(Long id)
     {
         if(id==null)throw new ServiceException("入库单ID不能为空");WmsReceipt receipt=mapper.selectReceiptForUpdate(id);
         if(receipt==null)throw new ServiceException("入库单不存在或已删除");
-        if(!"DRAFT".equals(receipt.getStatus()))throw new ServiceException("入库单【"+receipt.getReceiptNo()+"】不是草稿状态，不能编辑、删除或完成");return receipt;
+        if(!"DRAFT".equals(receipt.getStatus()))throw new ServiceException("入库单【"+receipt.getReceiptNo()+"】不是草稿状态，不能编辑、删除、完成或取消");return receipt;
     }
     private int insertWithGeneratedNo(WmsReceipt receipt)
     {
@@ -104,6 +120,23 @@ public class WmsReceiptServiceImpl implements IWmsReceiptService
     }
     private BigDecimal sumPlanned(List<WmsReceiptLine> lines){BigDecimal total=lines.stream().map(WmsReceiptLine::getPlannedQty).reduce(BigDecimal.ZERO,BigDecimal::add);validateTotal(total);return total;}
     private void validateTotal(BigDecimal total){if(total.compareTo(MAX_TOTAL)>0)throw new ServiceException("入库总数量超出系统可存储范围");}
+    private void validateLocationCapacity(List<WmsReceiptLine> lines)
+    {
+        Map<Long,BigDecimal> incomingByLocation=new TreeMap<>();
+        for(WmsReceiptLine line:lines)incomingByLocation.merge(line.getLocationId(),line.getReceivedQty(),BigDecimal::add);
+        for(Map.Entry<Long,BigDecimal> entry:incomingByLocation.entrySet())
+        {
+            WmsLocation location=locationMapper.selectLocationByIdForUpdate(entry.getKey());
+            if(location==null||!"0".equals(location.getStatus()))throw new ServiceException("目标库位不存在或已停用，请刷新后重试");
+            BigDecimal capacity=location.getCapacityQty();
+            if(capacity==null||capacity.signum()==0)continue;
+            BigDecimal current=stockMapper.selectTotalQuantityByLocation(entry.getKey());
+            if(current==null)current=BigDecimal.ZERO;
+            BigDecimal after=current.add(entry.getValue());
+            if(after.compareTo(capacity)>0)
+                throw new ServiceException("库位【"+location.getLocationCode()+"】容量不足：容量"+capacity.toPlainString()+"，当前"+current.toPlainString()+"，本次入库"+entry.getValue().toPlainString());
+        }
+    }
     private void validateBatchDates(WmsReceiptLine line,WmsStock stock)
     {
         boolean productionConflict=line.getProductionDate()!=null&&!Objects.equals(line.getProductionDate(),stock.getProductionDate());

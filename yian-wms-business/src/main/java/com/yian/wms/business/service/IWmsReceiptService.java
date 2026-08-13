@@ -11,4 +11,5 @@ public interface IWmsReceiptService
     int updateReceipt(WmsReceipt receipt);
     void deleteReceiptByIds(Long[] ids);
     void completeReceipt(Long id, String operator);
+    void cancelReceipt(Long id, String operator);
 }

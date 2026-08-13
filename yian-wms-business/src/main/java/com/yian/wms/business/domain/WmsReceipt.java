@@ -38,7 +38,7 @@ public class WmsReceipt extends BaseEntity
     public void setWarehouseId(Long warehouseId) { this.warehouseId = warehouseId; }
     public String getWarehouseName() { return warehouseName; }
     public void setWarehouseName(String warehouseName) { this.warehouseName = warehouseName; }
-    @Size(max = 100, message = "供应商名称不能超过100个字符") public String getSupplierName() { return supplierName; }
+    @NotBlank(message = "供应商名称不能为空") @Size(max = 100, message = "供应商名称不能超过100个字符") public String getSupplierName() { return supplierName; }
     public void setSupplierName(String supplierName) { this.supplierName = supplierName; }
     @NotNull(message = "入库日期不能为空") public Date getReceiptDate() { return receiptDate; }
     public void setReceiptDate(Date receiptDate) { this.receiptDate = receiptDate; }

@@ -10,6 +10,7 @@ User=wms
 Group=wms
 WorkingDirectory=/var/lib/wms
 EnvironmentFile=/etc/wms/wms.env
+Environment=TZ=Asia/Shanghai
 ExecStart=/usr/bin/java -Xms128m -Xmx512m -Xss512k -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError -jar /opt/wms/yian-wms-admin.jar
 Restart=on-failure
 RestartSec=5
